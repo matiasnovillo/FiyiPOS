@@ -1,0 +1,485 @@
+@using FiyiPOS.Services.System
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.AttendanceBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
+@using Microsoft.JSInterop
+
+@inject CookieService        cookieService
+@inject PosSessionService    posSessionService
+@inject HotkeyService        hotkeyService
+@inject ConfigRepository     configRepository
+@inject AttendanceRepository attendanceRepository
+@inject CashCutRepository    cashCutRepository
+@inject IJSRuntime           JS
+@implements IAsyncDisposable
+
+<!-- ── SIDEBAR ── -->
+<aside class="pos-sidebar @(Collapsed ? "sb-collapsed" : "")">
+
+    <!-- Marca + hamburguesa -->
+    <div class="sb-top">
+        <div class="sb-brand" title="FiyiPOS — @posSessionService.StoreName">
+            <div class="sb-brand-icon"><i class="fas fa-cash-register"></i></div>
+            <div class="sb-brand-text">
+                <div class="sb-brand-name">FiyiPOS @Subtitle</div>
+                @if (posSessionService.CanSwitchStore)
+                {
+                    <button class="sb-store-trigger" @onclick="ToggleStoreMenuAsync"
+                            title="Cambiar de sucursal">
+                        <i class="fas fa-store"></i>
+                        <span class="sb-store-name">@posSessionService.StoreName</span>
+                        <i class="fas fa-chevron-down sb-store-chevron @(_storeMenuOpen ? "open" : "")"></i>
+                    </button>
+                }
+                else
+                {
+                    <div class="sb-brand-sub"><i class="fas fa-store me-1"></i>@posSessionService.StoreName</div>
+                }
+            </div>
+        </div>
+        <button class="sb-hamburger" @onclick="ToggleCollapsedAsync"
+                title="@(Collapsed ? "Expandir menú" : "Contraer menú")">
+            <i class="fas fa-bars"></i>
+        </button>
+    </div>
+
+    @if (_storeMenuOpen)
+    {
+        <div class="sb-store-menu">
+            @foreach (var store in posSessionService.AccessibleStores)
+            {
+                <button class="store-dropdown-item @(store.StoreId == posSessionService.StoreId ? "active" : "")"
+                        @onclick="() => SwitchStore(store)">
+                    <i class="fas fa-map-marker-alt me-2"></i>@store.Name
+                </button>
+            }
+        </div>
+        <div class="store-dropdown-overlay" @onclick="() => _storeMenuOpen = false"></div>
+    }
+
+    <!-- Operador -->
+    <div class="sb-user" title="Le atiende: @posSessionService.OperatorName">
+        <div class="sb-user-avatar">
+            @(posSessionService.IsAuthenticated && posSessionService.OperatorName.Length > 0
+                ? posSessionService.OperatorName[0].ToString().ToUpper() : "?")
+        </div>
+        <div class="sb-user-text">
+            <div class="sb-user-label">Le atiende</div>
+            <div class="sb-user-name">@posSessionService.OperatorName</div>
+        </div>
+    </div>
+
+    <!-- Navegación -->
+    <nav class="sb-nav">
+
+        @if (posSessionService.CanAccess("dashboard"))
+        {
+            <button class="sb-item" @onclick="NavigateToDashboard" title="Dashboard">
+                <i class="fas fa-tachometer-alt sb-item-icon"></i>
+                <span class="sb-item-label">Dashboard</span>
+            </button>
+        }
+
+        @foreach (var g in EffectiveGroups)
+        {
+            @if (GroupHasAccess(g.Sections))
+            {
+                <div class="sb-group @(_openGroups.Contains(g.Key) ? "open" : "")">
+                    <button class="sb-group-trigger @(GroupIsActive(g.Sections) ? "has-active" : "")"
+                            @onclick="() => ToggleGroup(g.Key)"
+                            title="@g.Label">
+                        <i class="fas @g.Icon sb-item-icon"></i>
+                        <span class="sb-item-label">@g.Label</span>
+                        <i class="fas fa-chevron-down sb-chevron"></i>
+                    </button>
+
+                    @if (!Collapsed && _openGroups.Contains(g.Key))
+                    {
+                        <div class="sb-group-items">
+                            @foreach (var s in g.Sections.Where(posSessionService.CanAccess))
+                            {
+                                <button class="sb-subitem @(ActiveSection == s ? "active" : "")"
+                                        @onclick="() => NavigateAsync(s)">
+                                    <i class="fas @GetIcon(s) sb-subitem-icon"></i>
+                                    <span class="sb-item-label">@GetLabel(s)</span>
+                                    @if (ShowShortcuts && GetShortcut(s) is { } k)
+                                    {
+                                        <span class="sb-kbd">@k</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        <a class="sb-item sb-guide" href="/GUIA-DE-USO.html" target="_blank" title="Guía de uso">
+            <i class="fas fa-book-open sb-item-icon"></i>
+            <span class="sb-item-label">Guía de uso</span>
+        </a>
+
+    </nav>
+
+    <!-- Herramientas: zoom + tema -->
+    <div class="sb-tools">
+        <button class="sb-tool-btn" @onclick="ZoomOut" disabled="@(_zoomIndex <= 0)" title="Alejar">
+            <i class="fas fa-minus"></i>
+        </button>
+        <span class="sb-zoom-pct">@ZoomPercent%</span>
+        <button class="sb-tool-btn" @onclick="ZoomIn" disabled="@(_zoomIndex >= 10)" title="Acercar">
+            <i class="fas fa-plus"></i>
+        </button>
+        <span class="sb-tools-sep"></span>
+        <button class="sb-tool-btn" @onclick="ToggleThemeAsync"
+                title="@(_isDark ? "Cambiar a tema claro" : "Cambiar a tema oscuro")">
+            <i class="fas @(_isDark ? "fa-sun" : "fa-moon")"></i>
+        </button>
+    </div>
+
+    <!-- Salir -->
+    <div class="sb-footer">
+        <button class="sb-item sb-exit" @onclick="OpenExitModalAsync" title="Salir">
+            <i class="fas fa-sign-out-alt sb-item-icon"></i>
+            <span class="sb-item-label">Salir</span>
+        </button>
+    </div>
+
+</aside>
+
+@if (_showExitModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:500px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-sign-out-alt me-2"></i>Salir del POS</span>
+                <button class="panel-close fs-3" @onclick="() => _showExitModal = false">×</button>
+            </div>
+
+            <div class="panel-body">
+                @if (_checkingExit)
+                {
+                    <div style="text-align:center;padding:1.5rem 0;">
+                        <i class="fas fa-spinner fa-spin fa-2x" style="color:var(--text-muted);"></i>
+                    </div>
+                }
+                else
+                {
+                    @if (_uncountedSales > 0)
+                    {
+                        <div style="background:rgba(251,146,60,.12);border:1px solid #fb923c;border-radius:8px;
+                                    padding:.75rem 1rem;margin-bottom:1rem;display:flex;gap:.65rem;align-items:flex-start;">
+                            <i class="fas fa-exclamation-triangle" style="color:#f97316;margin-top:2px;flex-shrink:0;"></i>
+                            <div>
+                                <div class="fs-6" style="font-weight:700;color:#f97316;">
+                                    Hay @_uncountedSales venta@(_uncountedSales == 1 ? "" : "s") sin corte de caja
+                                </div>
+                                <div class="fs-6" style="color:var(--text-muted);margin-top:.2rem;">
+                                    Se recomienda hacer el corte antes de salir para cerrar el turno correctamente.
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    <p class="fs-6" style="text-align:center;color:var(--text-muted);">
+                        @(_uncountedSales > 0 ? "¿Deseas salir de todas formas?" : "¿Ya realizaste el corte de caja?")
+                    </p>
+                }
+            </div>
+
+            <div class="panel-footer" style="flex-wrap:wrap;">
+                <button class="abtn abtn-primary" @onclick="() => _showExitModal = false">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="GoToCorteAsync" disabled="@_checkingExit">
+                    <i class="fas fa-scissors"></i> No, ir a corte de caja
+                </button>
+                <button class="abtn abtn-danger" @onclick="Logout" disabled="@_checkingExit">
+                    <i class="fas fa-sign-out-alt"></i> Sí, salir
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string                ActiveSection    { get; set; } = "ventas";
+    [Parameter] public EventCallback<string> OnSectionChanged { get; set; }
+    [Parameter] public EventCallback         OnCircuitReady   { get; set; }
+
+    // Sufijo de la marca según plantilla (ej: "Online", "Restó", "Canchas")
+    [Parameter] public string Subtitle { get; set; } = "";
+
+    // Carpetas de navegación propias de cada plantilla.
+    // Si no se pasa, usa las de Punto de Venta.
+    [Parameter] public SidebarGroup[]? Groups { get; set; }
+
+    // Badges F1–F4: solo tienen sentido en plantillas cuya página escucha hotkeys
+    [Parameter] public bool ShowShortcuts { get; set; } = true;
+
+    // true = modal de confirmación con chequeo de corte de caja; false = salida directa
+    [Parameter] public bool ConfirmExitWithCashCut { get; set; } = true;
+
+    // Two-way bindable: permite controlar el colapso desde afuera
+    // (ej: un botón hamburguesa junto al breadcrumb "Panel de control")
+    [Parameter] public bool                Collapsed        { get; set; }
+    [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
+
+    public record SidebarGroup(string Key, string Label, string Icon, string[] Sections);
+
+    private static readonly SidebarGroup[] _defaultGroups =
+    [
+        new("ventas",    "Ventas",        "fa-cash-register", ["ventas", "creditos", "movimientos", "devoluciones", "consumointerno", "facturas", "corte", "notepad"]),
+        new("catalogo",  "Catálogo",      "fa-boxes",         ["productos", "inventario", "compras", "promociones"]),
+        new("contactos", "Contactos",     "fa-address-book",  ["clientes", "proveedores"]),
+        new("admin",     "Administrador", "fa-user-shield",   ["sucursales", "operadores", "configuracion", "reportes", "esquema", "asistencias", "categorias", "unidades", "aichat"]),
+    ];
+
+    private SidebarGroup[] EffectiveGroups => Groups ?? _defaultGroups;
+
+    private readonly HashSet<string> _openGroups = new();
+    private bool _storeMenuOpen;
+
+    protected override void OnInitialized()
+    {
+        posSessionService.OnSessionChanged += HandleSessionChanged;
+        posSessionService.OnStoreChanged   += HandleSessionChanged;
+
+        // Abre de entrada la carpeta que contiene la sección activa
+        var activeGroup = EffectiveGroups.FirstOrDefault(g => g.Sections.Contains(ActiveSection));
+        if (activeGroup != null) _openGroups.Add(activeGroup.Key);
+    }
+
+    private async void HandleSessionChanged() => await InvokeAsync(StateHasChanged);
+
+    private bool GroupHasAccess(string[] items) => items.Any(posSessionService.CanAccess);
+    private bool GroupIsActive(string[]  items) => items.Contains(ActiveSection);
+
+    private async Task ToggleCollapsedAsync()
+    {
+        Collapsed = !Collapsed;
+        _storeMenuOpen = false;
+        await CollapsedChanged.InvokeAsync(Collapsed);
+    }
+
+    private async Task ToggleGroup(string key)
+    {
+        if (Collapsed)
+        {
+            // En modo rail, tocar una carpeta expande el sidebar y la abre
+            Collapsed = false;
+            await CollapsedChanged.InvokeAsync(Collapsed);
+            _openGroups.Add(key);
+            return;
+        }
+
+        if (!_openGroups.Remove(key)) _openGroups.Add(key);
+    }
+
+    private async Task NavigateAsync(string section) => await OnSectionChanged.InvokeAsync(section);
+
+    private void NavigateToDashboard() => NavigationManager.NavigateTo("/panel-de-control");
+
+    // ── Hotkeys + circuit ready (migrado desde _Header) ───────────
+    private DotNetObjectReference<_SideBar>? _dotNetRef;
+    private bool _registered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _registered) return;
+        _registered = true;
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("hotkeyHelper.register", _dotNetRef);
+        await OnCircuitReady.InvokeAsync();
+
+        // ── Init de tema + zoom (migrado desde _NavBarPuntoDeVenta) ──
+        try
+        {
+            var configs     = await configRepository.GetSchemeVarsAsync(posSessionService.StoreId);
+            var activeTheme = configs.FirstOrDefault(c => c.ConfigKey == "pos_active_theme")?.Value ?? "light";
+            _isDark = activeTheme == "dark";
+
+            var prefix = _isDark ? "pos_dark_" : "pos_light_";
+            foreach (var c in configs.Where(c => c.ConfigKey.StartsWith(prefix)))
+                await JS.InvokeVoidAsync("schemeHelper.applyVar", c.ConfigKey.Replace(prefix, "pos_"), c.Value);
+
+            _zoomIndex = await JS.InvokeAsync<int>("zoomHelper.init");
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    [JSInvokable]
+    public void OnKeyPressed(string key) => hotkeyService.Dispatch(key);
+
+    // ── Selector de sucursal (migrado desde _Header) ──────────────
+    private async Task ToggleStoreMenuAsync()
+    {
+        if (Collapsed)
+        {
+            Collapsed = false;
+            await CollapsedChanged.InvokeAsync(Collapsed);
+            _storeMenuOpen = true;
+            return;
+        }
+        _storeMenuOpen = !_storeMenuOpen;
+    }
+
+    private void SwitchStore(FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Entities.Store store)
+    {
+        posSessionService.SwitchStore(store.StoreId, store.Name);
+        posSessionService.SetBillingDueDate(store.BillingDueDate);
+        _storeMenuOpen = false;
+    }
+
+    // ── Tema + zoom (migrado desde _NavBarPuntoDeVenta) ───────────
+    private bool _isDark;
+    private int  _zoomIndex  = 5;
+    private int  ZoomPercent => 75 + _zoomIndex * 5;
+
+    private async Task ZoomIn()  => _zoomIndex = await JS.InvokeAsync<int>("zoomHelper.zoomIn");
+    private async Task ZoomOut() => _zoomIndex = await JS.InvokeAsync<int>("zoomHelper.zoomOut");
+
+    private async Task ToggleThemeAsync()
+    {
+        _isDark = !_isDark;
+        try
+        {
+            // Recarga valores frescos para reflejar ediciones del Scheme Manager
+            var configs = await configRepository.GetSchemeVarsAsync(posSessionService.StoreId);
+            var prefix  = _isDark ? "pos_dark_" : "pos_light_";
+            var active  = configs.Where(c => c.ConfigKey.StartsWith(prefix)).ToList();
+            if (!active.Any()) { _isDark = !_isDark; return; }
+
+            foreach (var c in active)
+                await JS.InvokeVoidAsync("schemeHelper.applyVar", c.ConfigKey.Replace(prefix, "pos_"), c.Value);
+
+            // Persistir: flag de tema activo + variables pos_* aplicadas
+            var updates = active.ToDictionary(c => c.ConfigKey.Replace(prefix, "pos_"), c => c.Value);
+            updates["pos_active_theme"] = _isDark ? "dark" : "light";
+            await configRepository.UpdateSchemeVarsAsync(posSessionService.StoreId, updates);
+        }
+        catch { }
+    }
+
+    // ── Exit modal ─────────────────────────────────────
+    private bool _showExitModal  = false;
+    private bool _checkingExit   = false;
+    private int  _uncountedSales = 0;
+
+    private async Task OpenExitModalAsync()
+    {
+        if (!ConfirmExitWithCashCut)
+        {
+            await Logout();
+            return;
+        }
+
+        _uncountedSales = 0;
+        _checkingExit   = true;
+        _showExitModal  = true;
+        try
+        {
+            _uncountedSales = await cashCutRepository.GetUncountedSalesCountAsync(posSessionService.StoreId);
+        }
+        catch { }
+        finally { _checkingExit = false; }
+    }
+
+    private async Task GoToCorteAsync()
+    {
+        _showExitModal = false;
+        await OnSectionChanged.InvokeAsync("corte");
+    }
+
+    private async Task Logout()
+    {
+        _showExitModal = false;
+        if (posSessionService.IsAuthenticated)
+            _ = attendanceRepository.SetCheckOutAsync(
+                    posSessionService.SystemUserId, posSessionService.StoreId);
+
+        await cookieService.RemovePosSystemUserIdCookieAsync();
+        posSessionService.ClearSession();
+        NavigationManager.NavigateTo("/");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        posSessionService.OnSessionChanged -= HandleSessionChanged;
+        posSessionService.OnStoreChanged   -= HandleSessionChanged;
+        try { await JS.InvokeVoidAsync("hotkeyHelper.dispose"); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+        _dotNetRef?.Dispose();
+    }
+
+    private static string GetIcon(string s) => s switch
+    {
+        "ventas"        => "fa-shopping-cart",
+        "creditos"      => "fa-credit-card",
+        "movimientos"   => "fa-exchange-alt",
+        "devoluciones"  => "fa-undo-alt",
+        "consumointerno" => "fa-boxes-packing",
+        "facturas"      => "fa-file-invoice-dollar",
+        "corte"         => "fa-scissors",
+        "productos"     => "fa-box-open",
+        "inventario"    => "fa-warehouse",
+        "compras"       => "fa-truck",
+        "promociones"   => "fa-tags",
+        "clientes"      => "fa-users",
+        "proveedores"   => "fa-building",
+        "sucursales"    => "fa-store",
+        "operadores"    => "fa-user-cog",
+        "configuracion" => "fa-cog",
+        "reportes"      => "fa-chart-bar",
+        "esquema"       => "fa-palette",
+        "asistencias"   => "fa-user-clock",
+        "categorias"    => "fa-tags",
+        "unidades"      => "fa-ruler-combined",
+        "notepad"       => "fa-sticky-note",
+        "aichat"        => "fa-robot",
+        _               => "fa-circle",
+    };
+
+    private static string GetLabel(string s) => s switch
+    {
+        "ventas"        => "Ventas",
+        "creditos"      => "Créditos",
+        "movimientos"   => "Movimientos",
+        "devoluciones"  => "Devoluciones",
+        "consumointerno" => "Consumo interno",
+        "facturas"      => "Facturas",
+        "corte"         => "Corte",
+        "productos"     => "Productos",
+        "inventario"    => "Inventario",
+        "compras"       => "Compras",
+        "promociones"   => "Promociones",
+        "clientes"      => "Clientes",
+        "proveedores"   => "Proveedores",
+        "sucursales"    => "Sucursales",
+        "operadores"    => "Operadores",
+        "configuracion" => "Configuración",
+        "reportes"      => "Reportes",
+        "esquema"       => "Esquema de colores",
+        "asistencias"   => "Asistencias",
+        "categorias"    => "Categorías",
+        "unidades"      => "Unidades de medida",
+        "notepad"       => "Bloc de notas",
+        "aichat"        => "AI Chat",
+        _               => s,
+    };
+
+    private static string? GetShortcut(string s) => s switch
+    {
+        "ventas"     => "F1",
+        "creditos"   => "F2",
+        "productos"  => "F3",
+        "inventario" => "F4",
+        _            => null,
+    };
+}

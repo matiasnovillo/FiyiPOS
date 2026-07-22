@@ -1,0 +1,648 @@
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditPaymentBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditPaymentBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditPaymentBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ClientBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ClientBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+
+@inject CreditRepository creditRepository
+@inject CreditPaymentRepository creditPaymentRepository
+@inject ClientRepository clientRepository
+@inject PaymentMethodRepository paymentMethodRepository
+@inject PosSessionService posSessionService
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">CRÉDITOS A CLIENTES</div>
+    <div class="header-sub">Registrá créditos y abonos. Los créditos saldados se cierran automáticamente.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total créditos</div>
+        <div class="stat-value">@_statTotal</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Pendientes</div>
+        <div class="stat-value">@_statPending</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Vencidos</div>
+        <div class="stat-value">@_statOverdue</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Saldados</div>
+        <div class="stat-value">@_statPaid</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por cliente..."
+               @bind="_listFilter" @bind:event="oninput" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="StartNewCredit">
+        <i class="fas fa-plus"></i> Nuevo crédito
+    </button>
+</div>
+
+<!-- ── FILTROS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(!_showAll && !_filterOverdue ? "active" : "")"
+            @onclick='async () => { _showAll = false; _filterOverdue = false; await LoadCreditsAsync(); }'>
+        <i class="fas fa-clock"></i> Pendientes
+        <span>(@_statPending)</span>
+    </button>
+    <button class="filter-chip @(_filterOverdue ? "active" : "")"
+            @onclick='async () => { _filterOverdue = true; _showAll = true; await LoadCreditsAsync(); }'>
+        <i class="fas fa-exclamation-triangle"></i> Vencidos
+        @if (_statOverdue > 0) { <span>(@_statOverdue)</span> }
+    </button>
+    <button class="filter-chip @(_showAll && !_filterOverdue ? "active" : "")"
+            @onclick='async () => { _showAll = true; _filterOverdue = false; await LoadCreditsAsync(); }'>
+        <i class="fas fa-list"></i> Todos
+        <span>(@_statTotal)</span>
+    </button>
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loadingList)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando créditos...</p>
+        </div>
+    }
+    else if (!_filteredCredits.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-credit-card"></i>
+            <p>@(_listFilter.Length > 0 ? "Sin resultados" : "Sin créditos")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Cliente</th>
+                    <th>Monto original</th>
+                    <th>Saldo pendiente</th>
+                    <th>Progreso</th>
+                    <th>Fecha límite</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var cr in _filteredCredits)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:@GetAvatarColor(cr.CreditId);">
+                                    @(cr.ClientName.Length > 0 ? cr.ClientName[0].ToString().ToUpper() : "?")
+                                </div>
+                                <div>
+                                    <div class="entity-link" @onclick="() => SelectCredit(cr)">@cr.ClientName</div>
+                                    <div class="fs-6">@cr.ClientPhone</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">$@cr.OriginalAmount.ToString("N2")</td>
+                        <td class="fs-6"><strong>$@cr.Balance.ToString("N2")</strong></td>
+                        <td>
+                            <div class="cr-progress-bar" style="width:100px;">
+                                <div class="cr-progress-fill @(cr.IsOverdue ? "cr-fill-overdue" : "")"
+                                     style="width:@(cr.OriginalAmount > 0 ? (cr.AmountPaid / cr.OriginalAmount * 100).ToString("F0") : "0")%">
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6 @(cr.IsOverdue ? "cr-duedate-overdue" : "")">
+                            @(cr.DueDate.HasValue ? cr.DueDate.Value.ToString("dd/MM/yyyy") : "—")
+                        </td>
+                        <td>
+                            @if (cr.IsOverdue)
+                            {
+                                <span class="cr-badge cr-overdue fs-6">Vencido</span>
+                            }
+                            else if (!cr.Active)
+                            {
+                                <span class="cr-badge cr-paid fs-6">Saldado</span>
+                            }
+                            else
+                            {
+                                <span class="credit-badge credit-yes fs-6">
+                                    <i class="fas fa-check-circle me-1"></i>Activo
+                                </span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => SelectCredit(cr)">
+                                <i class="fas fa-eye"></i> Ver / Abonar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── MODAL: Nuevo crédito ── -->
+@if (_mode == PanelMode.NewCredit)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:600px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-plus-circle me-2"></i>Nuevo crédito</span>
+                <button class="panel-close fs-3" @onclick="CancelMode">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-section">Cliente</div>
+
+                <div class="cr-client-search-wrap">
+                    <i class="fas fa-search"></i>
+                    <input type="text"
+                           placeholder="Buscar cliente por nombre o teléfono..."
+                           value="@_clientSearch"
+                           @oninput="HandleClientSearchInput"
+                           @onfocus="() => _showClientResults = true" />
+                </div>
+
+                @if (_showClientResults && _clientSearch.Length >= 2 && _clientResults.Any() && _newCreditClient == null)
+                {
+                    <div class="cr-client-results">
+                        @foreach (var c in _clientResults.Take(6))
+                        {
+                            <div class="cr-client-result-row" @onclick="() => SelectNewCreditClient(c)">
+                                <span class="cr-res-name">@c.Nombres @c.Apellidos</span>
+                                <span class="cr-res-phone">@c.Telefono</span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (_newCreditClient != null)
+                {
+                    <div class="cr-selected-client-card">
+                        <i class="fas fa-user-circle me-2"></i>
+                        <span>@_newCreditClient.Nombres @_newCreditClient.Apellidos</span>
+                        <button class="cr-clear-client" @onclick="ClearNewCreditClient"><i class="fas fa-times"></i></button>
+                    </div>
+                }
+
+                <div class="panel-section" style="margin-top:.8rem;">Monto y condiciones</div>
+
+                <div class="panel-grid">
+                    <div class="field">
+                        <label>Monto del crédito <span class="required-star">*</span></label>
+                        <input type="number" min="0.01" step="0.01" @bind="_newAmount" placeholder="Ej: 1500.00" />
+                    </div>
+                    <div class="field">
+                        <label>Fecha límite de pago</label>
+                        <input type="date" @bind="_newDueDate" />
+                    </div>
+                </div>
+
+                <div class="field" style="margin-top:.5rem;">
+                    <label>Notas</label>
+                    <input type="text" @bind="_newNotes" placeholder="Ej: Mercadería semana 20..." />
+                </div>
+
+            </div>
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CancelMode" disabled="@_saving">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmNewCreditAsync"
+                        disabled="@(_saving || _newCreditClient == null || _newAmount <= 0)">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check-double")"></i>
+                    @(_saving ? "Guardando..." : "Crear crédito")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Detalle / Abono ── -->
+@if (_mode == PanelMode.Detail && _selected != null)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:680px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-user-circle me-2"></i>@_selected.ClientName</span>
+                <div style="display:flex;align-items:center;gap:.5rem;">
+                    @if (_selected.IsOverdue)
+                    {
+                        <span class="cr-badge cr-overdue">Vencido</span>
+                    }
+                    else if (!_selected.Active)
+                    {
+                        <span class="cr-badge cr-paid">Saldado</span>
+                    }
+                    <button class="panel-close fs-3" @onclick="CancelMode">×</button>
+                </div>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="cr-kpi-row">
+                    <div class="cr-kpi">
+                        <div class="cr-kpi-label">Original</div>
+                        <div class="cr-kpi-value">$@_selected.OriginalAmount.ToString("N2")</div>
+                    </div>
+                    <div class="cr-kpi">
+                        <div class="cr-kpi-label">Pagado</div>
+                        <div class="cr-kpi-value cr-kpi-paid">$@_selected.AmountPaid.ToString("N2")</div>
+                    </div>
+                    <div class="cr-kpi cr-kpi-highlight @(_selected.IsOverdue ? "cr-kpi-overdue-hl" : "")">
+                        <div class="cr-kpi-label">Saldo pendiente</div>
+                        <div class="cr-kpi-value">$@_selected.Balance.ToString("N2")</div>
+                    </div>
+                </div>
+
+                @if (_selected.DueDate.HasValue)
+                {
+                    <div class="cr-duedate-banner @(_selected.IsOverdue ? "cr-duedate-banner-overdue" : "")">
+                        <i class="fas fa-calendar-check me-2"></i>
+                        Fecha límite: @_selected.DueDate.Value.ToString("dd/MM/yyyy")
+                        @if (_selected.IsOverdue)
+                        {
+                            <strong> — VENCIDO</strong>
+                        }
+                    </div>
+                }
+
+                @if (_selected.Notes is not null)
+                {
+                    <div class="cr-notes-box"><i class="fas fa-sticky-note me-1"></i>@_selected.Notes</div>
+                }
+
+                <div class="panel-section" style="margin-top:.8rem;">
+                    Historial de abonos
+                    @if (_loadingPayments)
+                    {
+                        <i class="fas fa-spinner fa-spin ms-2" style="font-size:.75rem;"></i>
+                    }
+                </div>
+
+                @if (!_payments.Any() && !_loadingPayments)
+                {
+                    <div class="cr-empty-payments">Sin abonos registrados aún.</div>
+                }
+                else
+                {
+                    <div class="cr-payments-list">
+                        @foreach (var p in _payments)
+                        {
+                            <div class="cr-payment-row">
+                                <span class="cr-pay-date">@p.PaymentDate.ToString("dd/MM/yyyy HH:mm")</span>
+                                <span class="cr-pay-method">@p.PaymentMethodName</span>
+                                <span class="cr-pay-amount">+$@p.Amount.ToString("N2")</span>
+                                @if (!string.IsNullOrWhiteSpace(p.Notes))
+                                {
+                                    <span class="cr-pay-notes">@p.Notes</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (_selected.Active)
+                {
+                    <div class="panel-section" style="margin-top:.8rem;">Registrar abono</div>
+
+                    <div class="cr-payment-form">
+                        <div class="cr-pm-grid">
+                            @foreach (var pm in _paymentMethods)
+                            {
+                                <button class="cr-pm-btn @(_paymentMethodId == pm.PaymentMethodId ? "cr-pm-active" : "")"
+                                        @onclick="() => _paymentMethodId = pm.PaymentMethodId">
+                                    <i class="fas @GetPaymentIcon(pm.Name)"></i>
+                                    @pm.Name
+                                </button>
+                            }
+                        </div>
+
+                        <div class="panel-grid">
+                            <div class="field">
+                                <label>Monto del abono <span class="required-star">*</span></label>
+                                <div class="cr-amount-wrap">
+                                    <span class="cr-currency">$</span>
+                                    <input type="number" min="0.01" step="0.01"
+                                           max="@_selected.Balance"
+                                           @bind="_payAmount"
+                                           placeholder="0.00" />
+                                    <button class="cr-full-btn" @onclick='() => _payAmount = _selected.Balance'
+                                            title="Pagar saldo completo">Pagar todo</button>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label>Notas del abono</label>
+                                <input type="text" @bind="_payNotes" placeholder="Opcional..." />
+                            </div>
+                        </div>
+                    </div>
+                }
+
+            </div>
+
+            @if (_selected.Active)
+            {
+                <div class="panel-footer">
+                    <button class="abtn abtn-success" @onclick="ConfirmPaymentAsync"
+                            disabled="@(_saving || _payAmount <= 0 || _paymentMethodId == 0)">
+                        <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check-double")"></i>
+                        @(_saving ? "Guardando..." : $"Confirmar abono ${_payAmount:N2}")
+                    </button>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+
+    private enum PanelMode { None, Detail, NewCredit }
+
+    // ── Stats ──────────────────────────────────────────
+    private List<CreditLineDTO> _statsCredits = new();
+    private int _statTotal   => _statsCredits.Count;
+    private int _statPending => _statsCredits.Count(c => c.Active);
+    private int _statOverdue => _statsCredits.Count(c => c.IsOverdue);
+    private int _statPaid    => _statsCredits.Count(c => !c.Active);
+
+    // ── List ───────────────────────────────────────────
+    private bool              _loadingList   = true;
+    private bool              _showAll       = false;
+    private bool              _filterOverdue = false;
+    private string            _listFilter    = "";
+    private List<CreditLineDTO> _credits     = new();
+
+    private IEnumerable<CreditLineDTO> _filteredCredits =>
+        _credits
+            .Where(c => !_filterOverdue || c.IsOverdue)
+            .Where(c => string.IsNullOrWhiteSpace(_listFilter) ||
+                        c.ClientName.Contains(_listFilter, StringComparison.OrdinalIgnoreCase) ||
+                        c.ClientPhone.Contains(_listFilter, StringComparison.OrdinalIgnoreCase));
+
+    // ── Detail ─────────────────────────────────────────
+    private PanelMode                  _mode     = PanelMode.None;
+    private CreditLineDTO?             _selected;
+    private bool                       _loadingPayments;
+    private List<CreditPaymentLineDTO> _payments       = new();
+    private List<PaymentMethod>        _paymentMethods = new();
+    private long    _paymentMethodId;
+    private decimal _payAmount;
+    private string  _payNotes = "";
+    private bool    _saving;
+
+    // ── New credit form ────────────────────────────────
+    private string       _clientSearch      = "";
+    private bool         _showClientResults = false;
+    private List<Client> _allClients        = new();
+    private List<Client> _clientResults     = new();
+    private Client?      _newCreditClient;
+    private decimal      _newAmount;
+    private DateTime?    _newDueDate;
+    private string       _newNotes = "";
+
+    // ── Lifecycle ──────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(
+            LoadCreditsAsync(),
+            LoadStatsAsync(),
+            LoadPaymentMethodsAsync(),
+            LoadClientsAsync());
+    }
+
+    private async Task LoadCreditsAsync()
+    {
+        _loadingList = true;
+        _credits = await creditRepository.GetAllByStoreIdAsync(posSessionService.StoreId, onlyOpen: !_showAll);
+        _loadingList = false;
+    }
+
+    private async Task LoadStatsAsync()
+    {
+        _statsCredits = await creditRepository.GetAllByStoreIdAsync(posSessionService.StoreId, onlyOpen: false);
+    }
+
+    private async Task LoadPaymentMethodsAsync()
+    {
+        _paymentMethods = await paymentMethodRepository.GetAllActiveAsync();
+        if (_paymentMethods.Any()) _paymentMethodId = _paymentMethods[0].PaymentMethodId;
+    }
+
+    private async Task LoadClientsAsync()
+    {
+        _allClients = await clientRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+    }
+
+    // ── List interaction ───────────────────────────────
+    private async Task SelectCredit(CreditLineDTO cr)
+    {
+        _selected  = cr;
+        _mode      = PanelMode.Detail;
+        _payAmount = 0;
+        _payNotes  = "";
+        await LoadPaymentsAsync();
+    }
+
+    private async Task LoadPaymentsAsync()
+    {
+        if (_selected == null) return;
+        _loadingPayments = true;
+        _payments = await creditPaymentRepository.GetAllByCreditIdAsync(_selected.CreditId);
+        _loadingPayments = false;
+    }
+
+    // ── Client search for new credit ──────────────────
+    private void HandleClientSearchInput(ChangeEventArgs e)
+    {
+        _clientSearch      = e.Value?.ToString() ?? string.Empty;
+        _showClientResults = true;
+        FilterClients();
+    }
+
+    private void FilterClients()
+    {
+        if (_clientSearch.Length < 2) { _clientResults.Clear(); return; }
+        string q = _clientSearch.ToLower();
+        _clientResults = _allClients
+            .Where(c => (c.Nombres + " " + c.Apellidos).ToLower().Contains(q)
+                     || c.Telefono.Contains(q))
+            .ToList();
+    }
+
+    private void SelectNewCreditClient(Client c)
+    {
+        _newCreditClient   = c;
+        _clientSearch      = "";
+        _showClientResults = false;
+        _clientResults.Clear();
+    }
+
+    private void ClearNewCreditClient()
+    {
+        _newCreditClient = null;
+        _clientSearch    = "";
+    }
+
+    // ── New credit ─────────────────────────────────────
+    private void StartNewCredit()
+    {
+        _mode            = PanelMode.NewCredit;
+        _selected        = null;
+        _newCreditClient = null;
+        _clientSearch    = "";
+        _newAmount       = 0;
+        _newDueDate      = null;
+        _newNotes        = "";
+    }
+
+    private void CancelMode() => _mode = PanelMode.None;
+
+    private async Task ConfirmNewCreditAsync()
+    {
+        if (_newCreditClient == null || _newAmount <= 0) return;
+
+        _saving = true;
+        try
+        {
+            var credit = new Credit
+            {
+                ClientId       = _newCreditClient.ClientId,
+                SystemUserId   = posSessionService.SystemUserId,
+                OriginalAmount = _newAmount,
+                DueDate        = _newDueDate,
+                Notes          = string.IsNullOrWhiteSpace(_newNotes) ? null : _newNotes.Trim(),
+            };
+
+            await creditRepository.AddAsync(credit, posSessionService.StoreId);
+            await Task.WhenAll(LoadCreditsAsync(), LoadStatsAsync());
+
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", $"Crédito de ${_newAmount:N2} creado para {_newCreditClient.Nombres}.", "success");
+
+            _mode = PanelMode.None;
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Payment ────────────────────────────────────────
+    private async Task ConfirmPaymentAsync()
+    {
+        if (_selected == null || _payAmount <= 0 || _paymentMethodId == 0) return;
+
+        _saving = true;
+        try
+        {
+            var payment = new CreditPayment
+            {
+                CreditId        = _selected.CreditId,
+                SystemUserId    = posSessionService.SystemUserId,
+                PaymentMethodId = _paymentMethodId,
+                Amount          = _payAmount,
+                Notes           = string.IsNullOrWhiteSpace(_payNotes) ? null : _payNotes.Trim(),
+            };
+
+            await creditPaymentRepository.AddAsync(payment);
+
+            await Task.WhenAll(LoadCreditsAsync(), LoadStatsAsync(), LoadPaymentsAsync());
+
+            // Refresh the selected credit from the reloaded list
+            _selected = _credits.FirstOrDefault(c => c.CreditId == _selected.CreditId);
+
+            _payAmount = 0;
+            _payNotes  = "";
+
+            string msg = _selected is null || !_selected.Active
+                ? "¡Crédito saldado completamente!"
+                : $"Abono registrado. Saldo restante: ${_selected?.Balance:N2}";
+
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", msg, "success");
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Helpers ────────────────────────────────────────
+    private static readonly string[] _avatarColors =
+    [
+        "#4f46e5", "#0891b2", "#059669",
+        "#d97706", "#dc2626", "#7c3aed",
+    ];
+
+    private static string GetAvatarColor(long id) =>
+        _avatarColors[id % _avatarColors.Length];
+
+    private static string GetPaymentIcon(string name) => name.ToLower() switch
+    {
+        var n when n.Contains("efectivo") => "fa-money-bill-wave",
+        var n when n.Contains("tarjeta")  => "fa-credit-card",
+        var n when n.Contains("transfer") => "fa-exchange-alt",
+        var n when n.Contains("vale")     => "fa-ticket-alt",
+        _                                 => "fa-coins"
+    };
+}

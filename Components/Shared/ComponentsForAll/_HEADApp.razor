@@ -1,0 +1,85 @@
+﻿
+<!-- Codificación -->
+<meta charset="utf-8" />
+<!-- Responsive design -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<base href="/" />
+<!--Autor-->
+<meta name="author" content="Matias Alejandro Novillo" />
+<!--Theme Color-->
+<meta name="theme-color" content="#1565C0" />
+
+<HeadOutlet />
+
+<!--Canonical-->
+<link rel="canonical" href="https://fiyipos.com/" />
+
+<!--Favicon-->
+<link rel="icon" type="image/png" href="/img/FiyiPOS/logo.png" />
+<link rel="apple-touch-icon" sizes="76x76" href="/img/FiyiPOS/logo.png">
+
+<!--Nucleo icons-->
+<link rel="stylesheet" type="text/css" href="assets/css/nucleo-icons.css" />
+<link rel="stylesheet" type="text/css" href="assets/css/nucleo-svg.css" />
+
+<!--Material icons-->
+<link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/icon?family=Material+Icons+Round">
+
+<!--CSS libreries for Blazorise (2D Charts with .NET)-->
+<link href="_content/Blazorise.Icons.FontAwesome/v6/css/all.min.css" rel="stylesheet">
+<link href="_content/Blazorise/blazorise.css?v=1.7.7.0" rel="stylesheet" />
+<link href="_content/Blazorise.Bootstrap5/blazorise.bootstrap5.css?v=1.7.7.0" rel="stylesheet" />
+
+<!--CSS-->
+<link rel="stylesheet" type="text/css" href="assets/css/bootstrap.v5.3.3.min.css">
+<link rel="stylesheet" type="text/css" href="assets/css/material-kit-pro.css" />
+<link rel="stylesheet" type="text/css" href="assets/css/material-dashboard.css" />
+<link rel="stylesheet" type="text/css" href="assets/css/toastr.min.css" />
+<link rel="stylesheet" type="text/css" href="assets/vendor/quill/dist/quill.snow.css">
+
+<!-- JQuery: debe cargar antes que toastr.min.js, que lo necesita para inicializarse -->
+<script src="assets/js/core/jquery-3.7.1.min.js" type="text/javascript"></script>
+
+<!-- FiyiPOS JS helpers -->
+<script src="js/Global/hotkey-helper.js"></script>
+<script src="js/Global/cookie-helper.js"></script>
+<script src="js/FiyiPOS/scheme-helper.js"></script>
+<script src="js/FiyiPOS/zoom-helper.js"></script>
+<script src="js/FiyiPOS/aichat-helper.js"></script>
+<script src="js/FiyiPOS/report-helper.js"></script>
+
+<!-- Toasts: loaded in <head> (not the footer) so window.toastHelper is
+     guaranteed to exist as soon as the Blazor circuit connects, even if a
+     page interaction happens before the heavier footer scripts finish. -->
+<script src="assets/js/plugins/toastr.min.js" type="text/javascript"></script>
+<script src="js/Global/toast-helper.js" type="text/javascript"></script>
+
+<!--Custom CSS-->
+<link rel="stylesheet" type="text/css" href="css/CMS/checkboxes-for-query-pages-in-cms.css">
+<link rel="stylesheet" type="text/css" href="css/CMS/spinner-loader.css">
+<link rel="stylesheet" type="text/css" href="css/CMS/modal-in-dark-mode.css">
+<link rel="stylesheet" type="text/css" href="@_fiyiPosCssUrl">
+
+<!--Custom Fonts, including Font Awesome-->
+<link rel="stylesheet" type="text/css" href="fonts/font-routes.css" />
+<link rel="stylesheet" type="text/css" href="icons/fontawesome-free-6.5.1-web/css/all.min.css" />
+
+<!--Para navegadores Edge obsoletos-->
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+
+@inject IWebHostEnvironment _env
+
+@code {
+    private string _fiyiPosCssUrl
+    {
+        get
+        {
+            var path = Path.Combine(_env.WebRootPath, "css", "FiyiPOS", "FiyiPOS.css");
+            var ticks = File.Exists(path)
+                ? File.GetLastWriteTimeUtc(path).Ticks
+                : 0L;
+            return $"css/FiyiPOS/FiyiPOS.css?v={ticks}";
+        }
+    }
+}

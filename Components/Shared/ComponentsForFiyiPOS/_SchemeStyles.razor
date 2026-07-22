@@ -1,0 +1,48 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+
+@inject ConfigRepository configRepository
+@inject PosSessionService posSessionService
+@inject IJSRuntime JS
+@implements IDisposable
+
+@code {
+
+    protected override void OnInitialized()
+    {
+        posSessionService.OnSessionChanged += HandleSessionChanged;
+        posSessionService.OnStoreChanged   += HandleSessionChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await ApplySchemeAsync();
+    }
+
+    private async void HandleSessionChanged()
+    {
+        await ApplySchemeAsync();
+    }
+
+    private async Task ApplySchemeAsync()
+    {
+        if (posSessionService.StoreId <= 0) return;
+
+        var vars = await configRepository.GetSchemeVarsAsync(posSessionService.StoreId);
+        if (vars.Count == 0) return;
+
+        var dict = vars.ToDictionary(v => v.ConfigKey, v => v.Value);
+        try
+        {
+            await JS.InvokeVoidAsync("schemeHelper.applyAll", dict);
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        posSessionService.OnSessionChanged -= HandleSessionChanged;
+        posSessionService.OnStoreChanged   -= HandleSessionChanged;
+    }
+}

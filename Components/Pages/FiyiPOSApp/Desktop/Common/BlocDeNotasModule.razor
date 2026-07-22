@@ -1,0 +1,101 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.NotepadBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.NotepadBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+
+@inject NotepadRepository notepadRepository
+@inject PosSessionService posSessionService
+@inject IJSRuntime JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">BLOC DE NOTAS</div>
+    <div class="header-sub">Espacio privado para notas del supervisor y administrador.</div>
+</div>
+
+<!-- ── CUADRANTES ── -->
+@if (_loading)
+{
+    <div class="empty-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>Cargando notas...</p>
+    </div>
+}
+else
+{
+    <div class="notepad-grid">
+        @for (int i = 1; i <= 4; i++)
+        {
+            int n = i;
+            <div class="notepad-quadrant">
+                <div class="notepad-qheader">
+                    <p class="fs-6"><i class="fas fa-sticky-note fa-xl"></i> Nota @n</p>
+                </div>
+                <textarea class="notepad-textarea fs-6"
+                          @bind="_notes[n - 1]"
+                          placeholder="Escribí tu nota aquí..."></textarea>
+                <div class="notepad-qfooter">
+                    <button class="abtn abtn-success" @onclick="() => SaveNoteAsync(n)"
+                            disabled="@_saving[n - 1]">
+                        <i class="fas @(_saving[n - 1] ? "fa-spinner fa-spin" : "fa-save")"></i>
+                        @(_saving[n - 1] ? "Guardando..." : "Guardar")
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+
+    private bool     _loading = true;
+    private string[] _notes   = ["", "", "", ""];
+    private bool[]   _saving  = [false, false, false, false];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var notepad = await notepadRepository.GetByStoreIdAsync(posSessionService.StoreId);
+        if (notepad != null)
+        {
+            _notes[0] = notepad.Note1;
+            _notes[1] = notepad.Note2;
+            _notes[2] = notepad.Note3;
+            _notes[3] = notepad.Note4;
+        }
+        _loading = false;
+    }
+
+    private async Task SaveNoteAsync(int noteNum)
+    {
+        _saving[noteNum - 1] = true;
+        try
+        {
+            await notepadRepository.UpdateNoteAsync(
+                posSessionService.StoreId, noteNum, _notes[noteNum - 1]);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Guardado", $"Nota {noteNum} guardada correctamente.", "success");
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source    ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Error", ex.Message, "error");
+        }
+        finally
+        {
+            _saving[noteNum - 1] = false;
+        }
+    }
+}

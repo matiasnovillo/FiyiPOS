@@ -1,0 +1,14 @@
+﻿/* Contenedor del checkbox */
+.checkbox-container {
+    width: 38px; /* Ancho del cuadrado */
+    height: 36px; /* Alto del cuadrado */
+    background-color: #fffff; /* Gris clarito */
+    border-radius: 6px; /* Bordes redondeados */
+    border: 1px solid #1A73E8; /* Borde sutil */
+}
+
+/* Ajuste del checkbox dentro del cuadrado */
+input.larger-checkbox {
+    width: 18px;
+    height: 18px;
+}

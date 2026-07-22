@@ -1,0 +1,327 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+
+@inject CashMovementRepository cashMovementRepository
+@inject PosSessionService       posSessionService
+@inject IJSRuntime              JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">MOVIMIENTOS DE EFECTIVO</div>
+    <div class="header-sub">Entradas y salidas de dinero en la caja de efectivo, fuera de ventas</div>
+</div>
+
+<!-- ── STATS (totales globales) ── -->
+<div class="stats-row">
+    <div class="stat-card c-success">
+        <div class="stat-label">Total entradas</div>
+        <div class="stat-value">$@_totalIn.ToString("N2")</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Total salidas</div>
+        <div class="stat-value">$@_totalOut.ToString("N2")</div>
+    </div>
+    <div class="stat-card @(_totalNet >= 0 ? "c-primary" : "c-danger")">
+        <div class="stat-label">Balance total</div>
+        <div class="stat-value">$@_totalNet.ToString("N2")</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Total movimientos</div>
+        <div class="stat-value">@_items.Count</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Filtrar por concepto u operador..."
+               value="@_filter"
+               @oninput="OnFilterInput" />
+    </div>
+    <button class="abtn abtn-success" @onclick='() => OpenModal("IN")'>
+        <i class="fas fa-arrow-down"></i> Registrar entrada
+    </button>
+    <button class="abtn abtn-danger" @onclick='() => OpenModal("OUT")'>
+        <i class="fas fa-arrow-up"></i> Registrar salida
+    </button>
+</div>
+
+<!-- ── FILTROS DE FECHA ── -->
+<div class="toolbar" style="padding-top:0;gap:.75rem;flex-wrap:wrap;">
+    <span class="fs-6" style="color:var(--text-muted);white-space:nowrap;">
+        <i class="fas fa-calendar-alt me-1"></i> Período:
+    </span>
+    <input type="date"
+           class="config-input fs-6"
+           style="max-width:160px;"
+           value="@_dateFrom?.ToString("yyyy-MM-dd")"
+           @onchange="e => { _dateFrom = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null; _pageIndex = 1; }" />
+    <span class="fs-6" style="color:var(--text-muted);">—</span>
+    <input type="date"
+           class="config-input fs-6"
+           style="max-width:160px;"
+           value="@_dateTo?.ToString("yyyy-MM-dd")"
+           @onchange="e => { _dateTo = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null; _pageIndex = 1; }" />
+    @if (_dateFrom.HasValue || _dateTo.HasValue)
+    {
+        <button class="abtn abtn-sky" @onclick="ClearDates">
+            <i class="fas fa-times"></i> Limpiar fechas
+        </button>
+    }
+    @if (_filtered.Count() != _items.Count)
+    {
+        <span class="fs-6" style="color:var(--text-muted);">
+            @_filtered.Count() de @_items.Count movimientos
+        </span>
+    }
+</div>
+
+<!-- ── LISTA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando movimientos...</p>
+        </div>
+    }
+    else if (!_filtered.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-exchange-alt"></i>
+            <p>@(_filter.Length > 0 || _dateFrom.HasValue || _dateTo.HasValue ? "Sin resultados para los filtros aplicados" : "No hay movimientos registrados")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Fecha y hora</th>
+                    <th>Concepto</th>
+                    <th>Operador</th>
+                    <th style="text-align:right;">Importe</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in _paginated)
+                {
+                    <tr>
+                        <td>
+                            @if (m.Type == "IN")
+                            {
+                                <span class="mov-badge-in fs-6"><i class="fas fa-arrow-down me-1"></i>Entrada</span>
+                            }
+                            else
+                            {
+                                <span class="mov-badge-out fs-6"><i class="fas fa-arrow-up me-1"></i>Salida</span>
+                            }
+                        </td>
+                        <td class="fs-6" style="color:var(--text-muted);">@m.MovementDate.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="fs-6">@m.Reason</td>
+                        <td class="fs-6">@m.OperatorName</td>
+                        <td class="fs-6" style="text-align:right;font-weight:600;color:@(m.Type == "IN" ? "#059669" : "#dc2626");">
+                            @(m.Type == "IN" ? "+" : "−")$@m.Amount.ToString("N2")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="mov-pag-row">
+            <button class="abtn abtn-sky" disabled="@(_pageIndex <= 1)" @onclick="() => _pageIndex--">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            @{
+                int startPag = Math.Max(1, _pageIndex - 3);
+                int endPag   = Math.Min(_totalPages, _pageIndex + 3);
+            }
+            @for (int p = startPag; p <= endPag; p++)
+            {
+                int pg = p;
+                <button class="abtn @(pg == _pageIndex ? "abtn-primary" : "abtn-sky")"
+                        @onclick="() => _pageIndex = pg">
+                    @pg
+                </button>
+            }
+            <button class="abtn abtn-sky" disabled="@(_pageIndex >= _totalPages)" @onclick="() => _pageIndex++">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+            <span class="fs-6" style="color:var(--text-muted);margin-left:.4rem;">
+                Página @_pageIndex de @_totalPages
+            </span>
+        </div>
+    }
+</div>
+
+<!-- ── MODAL ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:440px;">
+
+            <div class="panel-header">
+                @if (_modalType == "IN")
+                {
+                    <span><i class="fas fa-arrow-down me-2" style="color:#059669;"></i>Registrar entrada de efectivo</span>
+                }
+                else
+                {
+                    <span><i class="fas fa-arrow-up me-2" style="color:#dc2626;"></i>Registrar salida de efectivo</span>
+                }
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+                <div class="panel-grid">
+                    <div class="field field-full">
+                        <label>Concepto / Motivo <span class="required-star">*</span></label>
+                        <input type="text" @bind="_reason" @bind:event="oninput"
+                               placeholder="Ej: Fondo inicial, Pago proveedor, Retiro parcial..." />
+                    </div>
+                    <div class="field field-full">
+                        <label>Importe <span class="required-star">*</span></label>
+                        <input type="number" min="0.01" step="0.01"
+                               @bind="_amount" @bind:event="oninput" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-footer">
+                <button class="abtn abtn-sky" @onclick="CloseModal" disabled="@_saving">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn @(_modalType == "IN" ? "abtn-success" : "abtn-danger")"
+                        @onclick="SaveAsync" disabled="@(_saving || _amount <= 0 || string.IsNullOrWhiteSpace(_reason))">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check-double")"></i>
+                    @(_saving ? "Guardando..." : (_modalType == "IN" ? "Registrar entrada" : "Registrar salida"))
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool      _loading   = true;
+    private bool      _saving    = false;
+    private string    _filter    = "";
+    private DateTime? _dateFrom  = null;
+    private DateTime? _dateTo    = null;
+    private int       _pageIndex = 1;
+    private const int _pageSize  = 20;
+
+    private List<CashMovementListItem> _items = new();
+
+    // ── Stats (totales globales) ───────────────────────
+    private decimal _totalIn  => _items.Where(m => m.Type == "IN").Sum(m => m.Amount);
+    private decimal _totalOut => _items.Where(m => m.Type == "OUT").Sum(m => m.Amount);
+    private decimal _totalNet => _totalIn - _totalOut;
+
+    // ── Filtrado + paginación ─────────────────────────
+    private IEnumerable<CashMovementListItem> _filtered =>
+        _items.Where(m =>
+            (string.IsNullOrWhiteSpace(_filter) ||
+             m.Reason.Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+             m.OperatorName.Contains(_filter, StringComparison.OrdinalIgnoreCase)) &&
+            (_dateFrom == null || m.MovementDate.Date >= _dateFrom.Value.Date) &&
+            (_dateTo   == null || m.MovementDate.Date <= _dateTo.Value.Date)
+        );
+
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling(_filtered.Count() / (double)_pageSize));
+
+    private IEnumerable<CashMovementListItem> _paginated =>
+        _filtered.Skip((_pageIndex - 1) * _pageSize).Take(_pageSize);
+
+    // ── Modal ─────────────────────────────────────────
+    private bool    _showModal = false;
+    private string  _modalType = "IN";
+    private decimal _amount    = 0;
+    private string  _reason    = "";
+
+    // ── Lifecycle ─────────────────────────────────────
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _items   = await cashMovementRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        _loading = false;
+    }
+
+    private void OnFilterInput(ChangeEventArgs e)
+    {
+        _filter    = e.Value?.ToString() ?? string.Empty;
+        _pageIndex = 1;
+    }
+
+    private void ClearDates()
+    {
+        _dateFrom  = null;
+        _dateTo    = null;
+        _pageIndex = 1;
+    }
+
+    // ── Modal actions ─────────────────────────────────
+    private void OpenModal(string type)
+    {
+        _modalType = type;
+        _amount    = 0;
+        _reason    = "";
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task SaveAsync()
+    {
+        if (_amount <= 0 || string.IsNullOrWhiteSpace(_reason)) return;
+
+        _saving = true;
+        try
+        {
+            await cashMovementRepository.AddAsync(new CashMovement
+            {
+                StoreId      = posSessionService.StoreId,
+                SystemUserId = posSessionService.SystemUserId,
+                Type         = _modalType,
+                Amount       = _amount,
+                Reason       = _reason.Trim(),
+            });
+
+            CloseModal();
+            await LoadAsync();
+
+            string label = _modalType == "IN" ? "Entrada" : "Salida";
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", $"{label} de ${_amount:N2} registrada correctamente.", NotificationTypeForJs.Success);
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source    ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

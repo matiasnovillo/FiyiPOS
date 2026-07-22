@@ -1,0 +1,456 @@
+FiyiPOS — PROGRESO DE IMPLEMENTACIÓN
+====================================
+Fecha de última actualización: 2026-05-11  (ReturnSale + DevolucionesModule completados)
+
+Leyenda:
+  [✓] Backend + Frontend completamente implementados y conectados
+  [B] Solo backend implementado (Entity + Config + Interface + Repository)
+  [—] Sin implementar
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLAS DEL DOMINIO FiyiPOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TABLA              ESTADO  NOTAS
+──────────────────────────────────────────────────────────────
+Store              [✓]     Backend + UI completos.
+                           SucursalesModule: lista, crear, editar,
+                           toggle activo/inactivo. Acceso solo admin.
+                           Al crear: auto-asigna admin + siembra configs.
+                           Sesión se refresca sin logout.
+
+Category           [B]     Backend listo. Dropdown en
+                           ProductosModule. Sin CRUD propio.
+                           Multi-tenant por StoreId (2026-07-02).
+
+Unit               [B]     Backend listo. Dropdown en
+                           ProductosModule. Sin CRUD propio.
+
+SystemUser         [✓]     Backend + UI completos.
+                           OperadoresModule: lista, crear, editar,
+                           toggle activo/inactivo. Acceso solo a
+                           admin y supervisor. Filtrado por sucursal
+                           vía SystemUserStore.
+
+Client             [✓]     Backend + UI completos.
+                           ClientesModule: lista, CRUD, búsqueda,
+                           crédito, export Excel.
+                           Multi-tenant por StoreId.
+
+PaymentMethod      [B]     Backend listo + campo IsCash agregado
+                           (necesario para corte de caja).
+                           Usado en VentasModule y CorteModule.
+                           Sin UI de admin.
+
+SaleStatus         [B]     Backend listo. Usado internamente.
+                           Sin UI de admin.
+
+Product            [✓]     Backend + UI completos.
+                           ProductosModule: lista, CRUD, búsqueda,
+                           filtro por tienda, export Excel.
+                           Multi-tenant por StoreId.
+
+Sale               [✓]     Backend completo con transacción atómica
+                           (AddFullSaleAsync). UI en VentasModule.
+
+SaleDetail         [✓]     Backend completo. Insertado dentro de
+                           AddFullSaleAsync. Sin UI separada.
+
+SalePayment        [✓]     Backend completo. Insertado dentro de
+                           AddFullSaleAsync. Sin UI separada.
+
+CashCut            [✓]     Backend completo (GetPreviewAsync +
+                           CreateAsync + GetAllByStoreIdAsync).
+                           UI en CorteModule: historial izquierda,
+                           nuevo corte con desglose por método
+                           de pago, cálculo de diferencia.
+
+CashCutDetail      [✓]     Backend completo. Insertado dentro de
+                           CashCutRepository.CreateAsync.
+
+InventoryMovement  [✓]     Backend + UI completos.
+                           InventarioModule: historial izquierda,
+                           búsqueda de producto, tipos IN/OUT/ADJUST,
+                           preview delta en ajuste, Razón/Ref.
+                           Multi-tenant por StoreId (2026-07-02).
+                           StoreId se deriva del producto en AddAsync
+                           (sin cambios en los callers).
+
+Credit             [✓]     Backend + UI completos.
+                           CreditosModule: lista con filtro
+                           pendientes/todos, detalle con KPIs,
+                           historial de abonos, nuevo crédito
+                           manual, buscador de cliente.
+                           Multi-tenant por StoreId (2026-07-02).
+
+CreditPayment      [✓]     Backend completo. Insertado dentro de
+                           CreditPaymentRepository.AddAsync con
+                           transacción atómica y cierre automático
+                           al saldar.
+
+Config             [✓]     Backend + UI completos.
+                           ConfiguracionModule: secciones Ventas
+                           y Ticket/Folio, dirty tracking,
+                           toggle/number/text inputs.
+
+Supplier           [✓]     Backend + UI completos.
+                           ProveedoresModule: lista, CRUD, búsqueda,
+                           export Excel. Multi-tenant por StoreId
+                           (columna añadida 2026-07-02).
+                           Schema: campos de auditoría completos.
+
+PriceList          [—]     Listas de precios (Mayoreo, VIP, etc.).
+
+ProductBarcode     [—]     Códigos alternativos por producto.
+
+ProductPriceList   [—]     Relación Producto ↔ Lista de precios.
+
+Purchase           [✓]     Backend + UI completos.
+                           ComprasModule: lista con tabs
+                           Todas/Pendientes/Confirmadas,
+                           form nueva compra con búsqueda de
+                           producto, confirmación de recepción
+                           que actualiza stock y genera
+                           InventoryMovement por línea.
+
+PurchaseDetail     [✓]     Backend completo. Insertado dentro de
+                           PurchaseRepository.AddFullPurchaseAsync.
+
+Invoice            [—]     Facturación electrónica.
+                           Depende de Sale + Client.
+                           Placeholder: FacturasModule.razor.
+
+ReturnSale         [✓]     Backend + UI completos.
+                           DevolucionesModule: historial izquierda,
+                           búsqueda por ticket, selección de artículos
+                           y cantidades, motivo, confirmación que
+                           restaura stock y genera InventoryMovement.
+
+ReturnSaleDetail   [✓]     Backend completo. Insertado dentro de
+                           ReturnSaleRepository.AddFullReturnAsync.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RESUMEN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Tablas totales en el schema:    26
+  Con backend + frontend [✓]:     18  (Store, SystemUser, Client,
+                                       Product, Sale, SaleDetail,
+                                       SalePayment, CashCut, CashCutDetail,
+                                       InventoryMovement, Credit,
+                                       CreditPayment, Config, Supplier,
+                                       Purchase, PurchaseDetail,
+                                       ReturnSale, ReturnSaleDetail)
+  Solo backend [B]:                4  (Category, Unit,
+                                       PaymentMethod, SaleStatus)
+  Sin implementar [—]:             4  (PriceList, ProductBarcode,
+                                       ProductPriceList, Invoice)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TAREAS PENDIENTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [ ] SCHEME MANAGER + MIGRACIÓN UI — NUEVA ESTÉTICA (NEW-UI.jpeg + SCHEME-MANAGER.jpeg)
+
+        ──────────────────────────────────────────────────────────
+        CONCEPTO CLAVE — ARQUITECTURA DE COLORES
+        ──────────────────────────────────────────────────────────
+        TODOS los colores del sistema deben definirse como CSS custom
+        properties (variables) inyectadas dinámicamente desde la BD.
+        NADA de colores hardcodeados en FiyiPOS.css para valores que
+        el usuario podría querer cambiar (fondo, primario, acento, etc.).
+        El Scheme Manager es el módulo que permite editar esas variables
+        y persistirlas. La UI nueva (fondo mint, etc.) no es un valor fijo:
+        es simplemente el preset por defecto que el Scheme Manager carga.
+
+        ──────────────────────────────────────────────────────────
+        FASE 1 — INFRAESTRUCTURA DE CSS VARIABLES (prerequisito de todo)
+        ──────────────────────────────────────────────────────────
+          [ ] Definir el set de variables CSS del sistema en FiyiPOS.css:
+                --pos-bg              (fondo del área de contenido)
+                --pos-surface         (fondo de cards/tablas)
+                --pos-primary         (color primario: botones, links, badges)
+                --pos-primary-light   (tinte claro del primario: stat cards, chips)
+                --pos-text            (texto principal)
+                --pos-text-muted      (texto secundario/gris)
+                --pos-border          (bordes de inputs, tablas, divisores)
+                --pos-success         (verde: activo, confirmado)
+                --pos-warning         (amarillo: alerta, pendiente)
+                --pos-danger          (rojo: error, inactivo, deuda)
+                --pos-logo-url        (URL del logo light mode)
+                --pos-logo-dark-url   (URL del logo dark mode)
+          [ ] Reemplazar todos los colores hardcodeados relevantes en
+              FiyiPOS.css por estas variables (recorrido sistemático del archivo)
+          [ ] Crear seed de valores por defecto en tabla Config
+              (una fila por variable, ConfigKey = nombre de la variable)
+          [ ] En _HEADApp.razor o similar: inyectar un <style>:root{...}</style>
+              con los valores leídos de Config al cargar la app,
+              de modo que las variables queden disponibles globalmente
+
+        ──────────────────────────────────────────────────────────
+        FASE 2 — SCHEME MANAGER (módulo nuevo)
+        ──────────────────────────────────────────────────────────
+          Referencia visual: SCHEME-MANAGER.jpeg
+          Secciones del módulo:
+            · Tabs "Light Mode" / "Dark Mode" (dos sets de variables independientes)
+            · Sección HEADER/NAV     → --pos-nav-bg, --pos-nav-text, --pos-nav-highlight
+            · Sección PRIMARY BUTTONS → --pos-primary, --pos-primary-text, --pos-primary-hover
+            · Sección ACCENTS & STATUS → --pos-primary-light, --pos-success, --pos-warning
+            · Sección PAGE & CARDS    → --pos-bg, --pos-surface, --pos-text
+            · Sección BORDERS         → --pos-border, --pos-highlight-box
+            · Sección FEATURE GRADIENT → --pos-gradient-start, --pos-gradient-end
+            · Sección LOGO UPLOAD     → subir imagen para --pos-logo-url / --pos-logo-dark-url
+            · Quick Presets (colores predefinidos guardables)
+            · Live Preview en tiempo real al cambiar colores
+            · Botón "Apply & Publish" → guarda en Config y recarga variables en la sesión
+          Acceso: solo admin (igual que Sucursales y Operadores)
+
+        ──────────────────────────────────────────────────────────
+        FASE 3 — NUEVA ESTÉTICA EN MÓDULOS (depende de Fase 1)
+        ──────────────────────────────────────────────────────────
+          Cambios estructurales de UI (independientes de colores):
+            · Stat cards: etiqueta UPPERCASE arriba, número abajo
+              (quitar bg-primary en 1ra card, todas blancas con borde fino)
+            · Acciones con menú "···" desplegable por fila (reemplaza botones visibles)
+            · Nombre de entidad como link coloreado con sub-info en gris
+            · Borde externo en la tabla (leve, usa --pos-border)
+            · Header de sección sin border-bottom
+            · MODALES: deben usar variables --pos-* en todos sus colores.
+              Problemas actuales identificados:
+                - .cli-modal tiene background:#0d2f32 y border:#1a4a4e hardcodeados
+                - .op-modal-header usa var(--primary) en lugar de var(--pos-primary)
+                - .op-modal-error tiene #fee2e2 / #991b1b hardcodeados
+              Regla: cada modal que se migre debe usar var(--pos-surface),
+              var(--pos-primary), var(--pos-border), var(--pos-text), etc.
+          Por módulo (de a uno, validar antes de seguir):
+          [✓] ClientesModule — stat cards + ··· menú + entity-link (modal pendiente)
+          [ ] ProveedoresModule
+          [ ] SucursalesModule  (header sin border ya aplicado ✓)
+          [ ] OperadoresModule
+          [ ] ProductosModule
+          [ ] PromocionesModule
+
+        FASE 4 — Módulos layout diferente (~) — solo ajuste estético
+          [ ] Unificar stat cards y tipografía usando las nuevas clases en:
+              CreditosModule, InventarioModule, ComprasModule,
+              CorteModule, DevolucionesModule, ReportesModule
+
+  [ ] RENOMBRAR FiyiPOS → FiyiPOS
+        Alcance: nombre del proyecto, namespaces, rutas, título de página,
+        referencias en CSS, landing page, README y todo lo visible al usuario.
+        El directorio físico y el .csproj también deberían actualizarse.
+        Impacto: refactor global — hacer en una rama aparte antes de mergear.
+
+  [ ] PULIR VentasModule.razor
+        Botones sin funcionalidad real (acción pendiente):
+          · "Varios" (INS)       — agregar múltiples unidades rápido
+          · "Art. Común" (Ctrl+P)— lista de artículos frecuentes
+          · "Buscar" (F10)       — modal de búsqueda de producto por nombre
+          · "Mayoreo" (F11)      — aplicar lista de precio mayoreo
+          · "Entradas" (F7)      — shortcut a InventarioModule tipo IN
+          · "Salidas" (F8)       — shortcut a InventarioModule tipo OUT
+          · "Verificador" (F9)   — consultar precio/stock sin agregar al cart
+          · "Cambiar" (F5)       — cambiar ticket activo (multi-ticket pendiente)
+          · "Pendiente" (F6)     — suspender ticket y retomarlo después
+          · "Reimprimir Último Ticket" — reabrir modal con la última venta
+          · "Ventas del día"     — resumen rápido de ventas de la jornada
+        Mejoras UX:
+          · Búsqueda de producto por nombre (F10) además de código de barras
+          · Descuento por línea o descuento global sobre el total
+          · Cantidad editable directamente desde teclado (sin mouse)
+
+  [ ] PriceList + ProductPriceList + ProductBarcode (prioridad baja)
+        Listas de precios diferenciadas (mayoreo, VIP, etc.) y
+        códigos de barras alternativos por producto.
+
+  [ ] Invoice → FacturasModule (prioridad baja)
+        Facturación electrónica. Requiere integración con proveedor CFDI
+        o equivalente según el país de operación.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HISTORIAL DE FEATURES RESUELTOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [✓] Roles con enforcement completo (PosSessionService.CanAccess)
+  [✓] Multi-sucursal con SystemUserStore (N:M), selector en login y header
+  [✓] SaleRepository.AddFullSaleAsync — TicketNumber con folio configurable
+  [✓] Ticket digital en pantalla post-venta + impresión @media print 72mm
+  [✓] OperadoresModule — CRUD de usuarios por sucursal
+  [✓] ReportesModule — Resumen, Top productos, Ventas por operador
+  [✓] DevolucionesModule — búsqueda por ticket, devolución parcial/total,
+      restauración de stock con InventoryMovement automático
+  [✓] SaaS billing: Store.BillingDueDate, alerta en _Header, página /pagar
+  [✓] Landing page (Home.razor), footer, login/crear-cuenta con fondo hero
+  [✓] Store switch resetea VentasModule (@key + OnStoreChanged event)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HISTORIAL DE CAMBIOS AL SCHEMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  2026-05-09  Customer → Client (campos en español, multi-tenant)
+  2026-05-09  Product: agregado StoreId
+  2026-05-09  Sale: CustomerId → ClientId; quitada FK a PriceList
+  2026-05-09  PaymentMethod: agregado IsCash TINYINT
+  2026-05-09  Credit: CustomerId → ClientId
+  2026-05-09  Invoice: CustomerId → ClientId
+  2026-05-09  CashCut + CashCutDetail: tablas creadas
+  2026-05-09  Seed PaymentMethod: IsCash=1 para Efectivo
+  2026-05-09  InventoryMovement: backend + InventarioModule UI completados
+  2026-05-10  Supplier: CreatedAt → campos de auditoría completos
+              (DateTimeCreation, DateTimeLastModification,
+               UserCreationId, UserLastModificationId)
+  2026-05-11  Store: agregado BillingDueDate DATETIME NULL
+  2026-05-11  ReturnSale: rediseño de columnas (StoreId, Total, CreatedAt;
+              quitados TotalRefund y RefundMethod del schema original)
+  2026-05-11  ReturnSaleDetail: rediseño (ProductId + snapshot en lugar de
+              SaleDetailId; agregados UnitPrice y Subtotal)
+  2026-07-02  Category: agregado StoreId BIGINT NOT NULL (era global, ahora por sucursal)
+  2026-07-02  Credit: agregado StoreId BIGINT NOT NULL (créditos manuales sin SaleId
+              no tenían ancla de sucursal)
+  2026-07-02  InventoryMovement: agregado StoreId BIGINT NOT NULL (movimientos de
+              inventario ahora tienen sucursal directa; se deriva del producto en AddAsync)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONVENCIÓN DE NOMBRES CSS (aplicada 2026-06-28)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Regla: las clases compartidas entre módulos NO llevan prefijo
+  de módulo (no op-, cli-, suc-, prov-, act-menu-, etc.).
+  Solo las clases genuinamente exclusivas de un módulo llevan
+  prefijo corto descriptivo (ej: credit-badge, debt-cell).
+
+  Clases compartidas (ya migradas):
+    Estructura:  header, header-title, header-sub
+                 toolbar, toolbar-left, search-bar
+                 list-container, data-table, row-inactive
+                 name-cell, name-stack, avatar, row-email
+                 actions-cell
+    Stats:       stats-row, stat-card, stat-label, stat-value
+                 (modificadores: c-primary, c-success, c-warning, c-danger)
+    Filtros:     filter-chips, filter-chip (.active)
+    Acciones:    menu-wrap, menu-btn, menu-dropdown, menu-item, menu-overlay
+    Modales:     modal-overlay
+                 dialog, dialog-header, dialog-body, dialog-actions, dialog-error
+                 panel, panel-header, panel-body, panel-close,
+                 panel-section, panel-grid, panel-footer
+    Campos:      field, field-full, field-hint, check-label,
+                 hint, readonly-val, balance-owed
+    Roles:       role-badge, role-admin, role-supervisor, role-cashier
+    Estado:      status-badge, status-active, status-inactive
+    Paginación:  pg-bar, pg-btn, pg-active, pg-ellipsis  (prefijo pg- = semántico)
+    Botones:     abtn, abtn-blue, abtn-green, abtn-rose, abtn-sky, abtn-gray
+
+  Al crear nuevos módulos: usar estas clases directamente.
+  No crear variantes con prefijo de módulo para el mismo concepto.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ANÁLISIS DE UI — PATRÓN ESTÁNDAR DE MÓDULOS (2026-06-18)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Patrón estándar definido:
+  1. Stat Cards arriba (totales/KPIs de la entidad)
+  2. Buscador debajo, con botón de acción ("Agregar") a la derecha
+  3. Grilla completa con columnas de datos relevantes
+  4. Columna "Acciones" al extremo derecho (abre modal Editar/Eliminar)
+  5. Paginación abajo a la derecha
+
+Leyenda:
+  [✓] Cumple el patrón estándar completo
+  [~] Layout diferente por diseño intencional (no es un CRUD de grilla)
+  [✗] Debería migrar al patrón estándar — pendiente
+
+MÓDULO                  ESTADO  OBSERVACIONES
+──────────────────────────────────────────────────────────────
+ClientesModule          [✓]     Patrón completo. Stat cards (Total/Crédito/
+                                Deudores), buscador + filtro Solo Deudores,
+                                botones Exportar y Nuevo Cliente a la derecha,
+                                tabla con columnas relevantes, paginación
+                                server-side por StoreId.
+
+ProveedoresModule       [✓]     Patrón completo. Stat cards (Total/Activos),
+                                buscador + Exportar + Nuevo Proveedor,
+                                tabla completa, paginación server-side.
+
+SucursalesModule        [✓]     Patrón completo. Stat cards (Total/Activas),
+                                buscador + Nueva Sucursal a la derecha,
+                                tabla con Nombre/Dirección/Estado/Acciones,
+                                paginación client-side.
+
+OperadoresModule        [✓]     Patrón completo. Stat cards (Total/Activos),
+                                buscador + Nuevo Operador a la derecha,
+                                tabla con Nombre/Email/Rol/Estado/Acciones,
+                                paginación client-side.
+
+ProductosModule         [✗]     Layout izquierda/derecha (lista card + form
+                                inline). No tiene stat cards, no tiene tabla
+                                con columnas completas ni paginación.
+                                PENDIENTE: migrar a grilla con columnas
+                                Nombre/Barcode/Categoría/Precio/Stock/Acciones,
+                                stat cards (Total, Activos, Con stock bajo) y
+                                paginación server-side por StoreId.
+
+PromocionesModule       [✗]     Layout izquierda/derecha igual que Productos.
+                                PENDIENTE: migrar a grilla con columnas
+                                Nombre/Productos/Precio/Estado/Acciones,
+                                stat cards (Total, Activas) y paginación.
+
+CreditosModule          [~]     Layout intencional: lista scrollable izquierda +
+                                panel de detalle/abonos derecha.
+                                No aplica el patrón estándar: el flujo requiere
+                                ver el historial de pagos mientras se opera.
+
+InventarioModule        [~]     Layout intencional: historial izquierda +
+                                formulario de nuevo movimiento derecha.
+                                No aplica: el flujo de registro de movimientos
+                                requiere ver el historial mientras se registra.
+
+ComprasModule           [~]     Layout intencional: historial/tabs izquierda +
+                                formulario/detalle de compra derecha.
+                                No aplica: el flujo de órdenes de compra
+                                requiere ver la lista y operar simultáneamente.
+
+CorteModule             [~]     Layout intencional: historial izquierda +
+                                panel de nuevo corte derecha.
+                                No aplica: el flujo de corte es una operación
+                                puntual con vista de historial contextual.
+
+DevolucionesModule      [~]     Layout intencional: historial izquierda +
+                                formulario de devolución derecha.
+                                No aplica: el flujo de devolución requiere
+                                buscar ticket y operar en el mismo contexto.
+
+ReportesModule          [~]     Módulo analítico: filtros de fecha + KPIs +
+                                tablas de resumen. No es un CRUD de entidades.
+                                No aplica el patrón de grilla.
+
+ConfiguracionModule     [~]     Módulo de configuración con secciones/cards
+                                de parámetros clave-valor.
+                                No aplica: no es una grilla de entidades.
+
+VentasModule            [~]     POS principal. Layout de punto de venta con
+                                tickets, carrito, teclado numérico y cobro.
+                                No aplica: dominio completamente diferente.
+
+FacturasModule          [—]     Placeholder (módulo en construcción).
+                                Cuando se implemente, deberá seguir el patrón
+                                estándar: grilla de facturas con stat cards,
+                                buscador, filtros de fecha, paginación y
+                                acciones (ver/emitir/cancelar).
+
+RESUMEN UI
+  Patrón estándar completo [✓]:  4  (Clientes, Proveedores, Sucursales,
+                                      Operadores)
+  Pendientes de migrar [✗]:      2  (Productos, Promociones)
+  Layout diferente intencional:  8  (Créditos, Inventario, Compras, Corte,
+  [~] no aplica migrar              Devoluciones, Reportes, Configuración,
+                                    Ventas)
+  Sin implementar [—]:           1  (Facturas)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONVENCIÓN: SIEMPRE MANTENER ACTUALIZADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  · Este archivo se actualiza al completar cada feature.
+  · Backup/pos_schema.sql refleja siempre el estado real
+    de la BD (tablas + columnas + seed data) tal como quedó
+    implementado — NO el diseño original genérico.

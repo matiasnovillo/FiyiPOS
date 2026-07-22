@@ -1,0 +1,510 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.InternalConsumptionBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.InternalConsumptionBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.InternalConsumptionBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.InternalConsumptionDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+
+@inject InternalConsumptionRepository internalConsumptionRepository
+@inject ProductRepository             productRepository
+@inject PosSessionService             posSessionService
+@inject IJSRuntime                    JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">CONSUMO INTERNO</div>
+    <div class="header-sub">Registrá los productos que el Store consume internamente (personal, muestras, mermas) y su costo.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-warning">
+        <div class="stat-label">Cantidad de productos quitados</div>
+        <div class="stat-value">@_filtered.Sum(c => c.TotalQuantity).ToString("N2")</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Costo total</div>
+        <div class="stat-value">$@_filtered.Sum(c => c.TotalCost).ToString("N2")</div>
+    </div>
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de registros</div>
+        <div class="stat-value">@_filtered.Count()</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Consumos de hoy</div>
+        <div class="stat-value">@_history.Count(c => c.ConsumptionDate.Date == DateTime.Today)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Filtrar por motivo u operador..."
+               @bind="_textFilter" @bind:event="oninput" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nuevo consumo
+    </button>
+</div>
+
+<!-- ── FILTROS DE FECHA ── -->
+<div class="filter-chips">
+    <span class="inv-date-label fs-6"><i class="fas fa-calendar-alt me-1"></i>Período:</span>
+
+    <label class="inv-date-label fs-6 mt-2">Desde</label>
+    <input type="date" class="inv-date-input fs-6" @bind="_dateFrom" @bind:after="OnDateFilterChanged" />
+
+    <label class="inv-date-label fs-6 mt-2">Hasta</label>
+    <input type="date" class="inv-date-input fs-6" @bind="_dateTo" @bind:after="OnDateFilterChanged" />
+
+    @if (_dateFrom.HasValue || _dateTo.HasValue)
+    {
+        <button class="filter-chip" @onclick="ClearDateFilter">
+            <i class="fas fa-times"></i> Limpiar fechas
+        </button>
+    }
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loadingHistory)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando historial...</p>
+        </div>
+    }
+    else if (!_filtered.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-boxes-packing"></i>
+            <p>@(HasActiveFilters ? "Sin resultados para los filtros aplicados" : "Sin consumos internos registrados")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Motivo</th>
+                    <th>Operador</th>
+                    <th>Productos</th>
+                    <th style="text-align:right;">Costo total</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _filtered)
+                {
+                    <tr>
+                        <td class="fs-6" style="color:var(--text-muted);">@c.ConsumptionDate.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="fs-6">@c.Reason</td>
+                        <td class="fs-6">@c.OperatorName</td>
+                        <td>
+                            <button class="abtn abtn-primary" @onclick="() => ShowDetailAsync(c)">
+                                <i class="fas fa-eye"></i> @c.ItemCount ítem@(c.ItemCount != 1 ? "s" : "") (@c.TotalQuantity.ToString("N2"))
+                            </button>
+                        </td>
+                        <td class="fs-6" style="text-align:right;">
+                            <strong style="color:var(--pos-danger);">-$@c.TotalCost.ToString("N2")</strong>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── MODAL: Nuevo consumo interno ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:720px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-boxes-packing me-2"></i>Nuevo consumo interno</span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-section">Buscar producto a consumir</div>
+
+                <div class="ci-search-wrap">
+                    <div class="search-bar" style="flex:1;">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Nombre o código de barras..."
+                               value="@_productSearch" @oninput="OnProductSearchInput" autocomplete="off" />
+                    </div>
+
+                    @if (_productResults.Any())
+                    {
+                        <div class="ci-search-results">
+                            @foreach (var p in _productResults)
+                            {
+                                <div class="ci-search-result-row" @onclick="() => AddLine(p)">
+                                    <div class="ci-search-result-name">
+                                        @p.Name
+                                        <span class="ci-search-result-barcode">@p.Barcode</span>
+                                    </div>
+                                    <div class="ci-search-result-cost">Costo: $@p.CostPrice.ToString("N2")</div>
+                                    <div class="ci-search-result-stock @(p.Stock <= 0 ? "buscar-stock-low" : "")">Stock: @p.Stock.ToString("N2")</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (_lines.Any())
+                {
+                    <div class="panel-section" style="margin-top:.8rem;">Productos a consumir</div>
+
+                    @foreach (var line in _lines)
+                    {
+                        <div class="dev-item-row selected">
+                            <div class="dev-item-name">@line.ProductNameSnapshot</div>
+                            <div class="dev-item-qty-wrap">
+                                <input type="number" class="dev-item-qty-input"
+                                       min="@(line.AllowFractional ? "0.01" : "1")"
+                                       step="@(line.AllowFractional ? "0.01" : "1")"
+                                       @bind="line.Quantity" />
+                            </div>
+                            <div class="dev-item-max">x $@line.UnitCost.ToString("N2")</div>
+                            <div class="dev-item-subtotal">$@line.Subtotal.ToString("N2")</div>
+                            <button class="ci-remove-btn" @onclick="() => RemoveLine(line)" title="Quitar">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    }
+
+                    <div class="panel-section" style="margin-top:.8rem;">Motivo del consumo</div>
+
+                    <div class="field" style="margin-bottom:.6rem;">
+                        <input type="text" @bind="_reason" @bind:event="oninput"
+                               placeholder="Ej: Consumo del personal, muestra de producto, rotura, preparación..." />
+                    </div>
+
+                    <div class="cr-kpi-row">
+                        <div class="cr-kpi cr-kpi-highlight">
+                            <div class="cr-kpi-label">Costo total</div>
+                            <div class="cr-kpi-value">$@LinesTotal.ToString("N2")</div>
+                        </div>
+                        <div class="cr-kpi">
+                            <div class="cr-kpi-label">Productos quitados</div>
+                            <div class="cr-kpi-value">@LinesQuantity.ToString("N2")</div>
+                        </div>
+                    </div>
+                }
+
+            </div>
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmConsumptionAsync"
+                        disabled="@(_saving || _lines.Count == 0 || string.IsNullOrWhiteSpace(_reason))">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                    @(_saving ? "Procesando..." : "Confirmar consumo")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Detalle de productos consumidos ── -->
+@if (_showDetailModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:560px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-list me-2"></i>Productos consumidos — @_detailModalTitle</span>
+                <button class="panel-close fs-3" @onclick="() => _showDetailModal = false">×</button>
+            </div>
+
+            <div class="panel-body">
+                @if (_loadingDetails)
+                {
+                    <div class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Cargando...</p>
+                    </div>
+                }
+                else
+                {
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Costo unit.</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in _detailLines)
+                            {
+                                <tr>
+                                    <td class="fs-6">@d.ProductNameSnapshot</td>
+                                    <td class="fs-6">@d.Quantity.ToString("N2")</td>
+                                    <td class="fs-6">$@d.UnitCost.ToString("N2")</td>
+                                    <td class="fs-6"><strong>$@d.Subtotal.ToString("N2")</strong></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDetailModal = false">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool   _loadingHistory   = true;
+    private bool   _saving           = false;
+    private bool   _showModal        = false;
+    private bool   _showDetailModal  = false;
+    private bool   _loadingDetails   = false;
+    private string _detailModalTitle = "";
+    private string _textFilter       = "";
+    private string _reason           = "";
+
+    private DateTime? _dateFrom = null;
+    private DateTime? _dateTo   = null;
+
+    private List<InternalConsumptionLineDTO> _history     = new();
+    private List<Product>                    _allProducts = new();
+    private List<ConsumptionLineVM>          _lines       = new();
+    private List<InternalConsumptionDetail>  _detailLines = new();
+
+    private string         _productSearch  = "";
+    private List<Product>  _productResults = new();
+
+    private bool HasActiveFilters =>
+        _textFilter.Length > 0 || _dateFrom.HasValue || _dateTo.HasValue;
+
+    private IEnumerable<InternalConsumptionLineDTO> _filtered =>
+        _history.Where(c =>
+            (string.IsNullOrWhiteSpace(_textFilter) ||
+             c.Reason.Contains(_textFilter, StringComparison.OrdinalIgnoreCase) ||
+             c.OperatorName.Contains(_textFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (_dateFrom == null || c.ConsumptionDate.Date >= _dateFrom.Value.Date) &&
+            (_dateTo   == null || c.ConsumptionDate.Date <= _dateTo.Value.Date));
+
+    private decimal LinesTotal    => _lines.Sum(l => l.Subtotal);
+    private decimal LinesQuantity => _lines.Sum(l => l.Quantity);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _loadingHistory = true;
+        try
+        {
+            _history = await internalConsumptionRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loadingHistory = false;
+        }
+    }
+
+    private void OnDateFilterChanged() { }
+
+    private void ClearDateFilter()
+    {
+        _dateFrom = null;
+        _dateTo   = null;
+    }
+
+    private async Task ShowDetailAsync(InternalConsumptionLineDTO c)
+    {
+        _detailModalTitle = c.ConsumptionDate.ToString("dd/MM/yyyy HH:mm");
+        _detailLines      = new();
+        _showDetailModal  = true;
+        _loadingDetails   = true;
+        try
+        {
+            _detailLines = await internalConsumptionRepository.GetDetailsByInternalConsumptionIdAsync(c.InternalConsumptionId);
+        }
+        finally
+        {
+            _loadingDetails = false;
+        }
+    }
+
+    private async Task OpenNewModal()
+    {
+        _productSearch  = "";
+        _productResults = new();
+        _reason         = "";
+        _lines          = new();
+        _showModal      = true;
+
+        if (!_allProducts.Any())
+            _allProducts = await productRepository.GetAllActiveByStoreIdAsync(posSessionService.StoreId);
+    }
+
+    private void CloseModal()
+    {
+        _showModal      = false;
+        _productSearch  = "";
+        _productResults = new();
+        _reason         = "";
+        _lines          = new();
+    }
+
+    private void OnProductSearchInput(ChangeEventArgs e)
+    {
+        _productSearch = e.Value?.ToString() ?? "";
+        string q = _productSearch.Trim().ToLowerInvariant();
+
+        _productResults = q.Length == 0
+            ? new()
+            : _allProducts
+                .Where(p => p.Name.ToLowerInvariant().Contains(q) || p.Barcode.ToLowerInvariant().Contains(q))
+                .Take(15)
+                .ToList();
+    }
+
+    private void AddLine(Product p)
+    {
+        var existing = _lines.FirstOrDefault(l => l.ProductId == p.ProductId);
+        if (existing != null)
+        {
+            existing.Quantity += 1;
+        }
+        else
+        {
+            _lines.Add(new ConsumptionLineVM
+            {
+                ProductId           = p.ProductId,
+                ProductNameSnapshot = p.Name,
+                AllowFractional     = p.AllowFractional,
+                UnitCost            = p.CostPrice,
+                Quantity            = 1,
+            });
+        }
+
+        _productSearch  = "";
+        _productResults = new();
+    }
+
+    private void RemoveLine(ConsumptionLineVM line) => _lines.Remove(line);
+
+    private async Task ConfirmConsumptionAsync()
+    {
+        if (_lines.Count == 0 || string.IsNullOrWhiteSpace(_reason)) return;
+
+        _saving = true;
+        try
+        {
+            var validLines = _lines.Where(l => l.Quantity > 0).ToList();
+            if (!validLines.Any())
+            {
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "Agregá al menos un producto con cantidad mayor a 0.", "warning");
+                return;
+            }
+
+            var header = new InternalConsumption
+            {
+                StoreId      = posSessionService.StoreId,
+                SystemUserId = posSessionService.SystemUserId,
+                Reason       = _reason.Trim(),
+            };
+
+            var details = validLines.Select(l => new InternalConsumptionDetail
+            {
+                ProductId           = l.ProductId,
+                ProductNameSnapshot = l.ProductNameSnapshot,
+                Quantity            = l.Quantity,
+                UnitCost            = l.UnitCost,
+                Subtotal            = Math.Round(l.Quantity * l.UnitCost, 2),
+            }).ToList();
+
+            await internalConsumptionRepository.AddFullConsumptionAsync(header, details);
+
+            decimal total = details.Sum(d => d.Subtotal);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Consumo registrado",
+                $"Se registraron {validLines.Count} producto(s) por un costo de ${total:N2} y se actualizó el stock.",
+                "success");
+
+            CloseModal();
+            await LoadHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private class ConsumptionLineVM
+    {
+        public long    ProductId           { get; set; }
+        public string  ProductNameSnapshot { get; set; } = "";
+        public bool    AllowFractional     { get; set; }
+        public decimal UnitCost            { get; set; }
+
+        private decimal _quantity;
+        public decimal Quantity
+        {
+            get => _quantity;
+            set => _quantity = Math.Max(0, AllowFractional ? value : Math.Floor(value));
+        }
+
+        public decimal Subtotal => Math.Round(Quantity * UnitCost, 2);
+    }
+}

@@ -1,0 +1,642 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserStoreBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.UnitBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.UnitBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+@using System.Text.RegularExpressions
+
+@inject StoreRepository storeRepository
+@inject SystemUserStoreRepository systemUserStoreRepository
+@inject ConfigRepository configRepository
+@inject UnitRepository unitRepository
+@inject PosSessionService posSessionService
+@inject IJSRuntime JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">GESTIÓN DE SUCURSALES</div>
+    <div class="header-sub">Administrá los locales físicos donde opera tu POS. Podés tener múltiples sucursales con datos y configuraciones independientes.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de sucursales</div>
+        <div class="stat-value">@_sucursales.Count</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Sucursales activas</div>
+        <div class="stat-value">@_sucursales.Count(s => s.Active)</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Sucursales inactivas</div>
+        <div class="stat-value">@_sucursales.Count(s => !s.Active)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nombre..."
+               @bind="_searchText" @oninput="OnSearchInput" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nueva Sucursal
+    </button>
+</div>
+
+<!-- ── FILTER CHIPS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(_activeFilter == "active" ? "active" : "")"
+            @onclick='() => SetActiveFilter("active")'>
+        <i class="fas fa-store"></i> Activas
+        <span>(@_sucursales.Count(s => s.Active))</span>
+    </button>
+    <button class="filter-chip @(_activeFilter == "inactive" ? "active" : "")"
+            @onclick='() => SetActiveFilter("inactive")'>
+        <i class="fas fa-store-slash"></i> Inactivas
+        <span>(@_sucursales.Count(s => !s.Active))</span>
+    </button>
+</div>
+
+<!-- ── LISTA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando sucursales...</p>
+        </div>
+    }
+    else if (!_pageStores.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-store-slash"></i>
+            <p>No hay sucursales registradas</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Dirección</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _pageStores)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:@GetAvatarColor(s.StoreId);">
+                                    @GetInitial(s)
+                                </div>
+                                <div>
+                                    <div class="entity-link" @onclick="() => OpenEditModal(s)">@s.Name</div>
+                                    @if (s.StoreId == posSessionService.StoreId)
+                                    {
+                                        <span class="current-badge fs-6">Sucursal actual</span>
+                                    }
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">@(string.IsNullOrWhiteSpace(s.Address) ? "—" : s.Address)</td>
+                        <td>
+                            @if (s.Active)
+                            {
+                                <span class="credit-badge credit-yes fs-6">
+                                    <i class="fas fa-check-circle me-1"></i>Activo
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="credit-badge credit-no fs-6">Inactivo</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenEditModal(s)">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="abtn @(s.Active ? "abtn-danger" : "abtn-success")"
+                                    @onclick="() => ToggleActive(s)"
+                                    disabled="@(s.StoreId == posSessionService.StoreId && s.Active)">
+                                <i class="fas @(s.Active ? "fa-store-slash" : "fa-store")"></i>
+                                @(s.Active ? "Desactivar" : "Activar")
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_sucursales.Count > 0)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+        @for (int p = winStart; p <= winEnd; p++)
+        {
+            int pg = p;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+<!-- ── MODAL ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel">
+            <div class="panel-header">
+                <span>
+                    <i class="fas @(_editingId == null ? "fa-plus" : "fa-edit") me-2"></i>
+                    @(_editingId == null ? "Nueva sucursal" : "Editar sucursal")
+                </span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+                <div class="panel-grid">
+
+                    <div class="field field-full">
+                        <label>Nombre <span class="required-star">*</span></label>
+                        <input type="text" @bind="_form.Name"
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Name) ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field field-full">
+                        <label>Dirección</label>
+                        <input type="text" @bind="_form.Address" />
+                    </div>
+
+                    <div class="field field-full" style="border-top:1px solid var(--pos-border);padding-top:.75rem;margin-top:.25rem;">
+                        <label>
+                            <i class="fas fa-robot me-1" style="color:var(--pos-primary);"></i>
+                            Claude API Key
+                        </label>
+                        <input type="password" @bind="_form.ClaudeApiKey"
+                               placeholder="sk-ant-api03-..." autocomplete="off" />
+                        <small style="color:var(--pos-text-muted);font-size:.85rem;">
+                            Requerida para usar el módulo AI Chat en esta sucursal. Obtenela en console.anthropic.com
+                        </small>
+                    </div>
+
+                    @if (_editingId != null)
+                    {
+                        <div class="field field-full" style="border-top:1px solid var(--pos-border);padding-top:.75rem;margin-top:.25rem;">
+                            <label class="check-label @(_editingId == posSessionService.StoreId ? "check-label-disabled" : "")">
+                                <input type="checkbox" @bind="_form.Active"
+                                       disabled="@(_editingId == posSessionService.StoreId)" />
+                                Sucursal activa
+                            </label>
+                            @if (_editingId == posSessionService.StoreId)
+                            {
+                                <p class="check-warn">
+                                    <i class="fas fa-lock"></i>
+                                    No podés desactivar la sucursal que tenés en sesión.
+                                </p>
+                            }
+                        </div>
+                    }
+
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="SaveSucursal" disabled="@_saving">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool   _loading        = true;
+    private bool   _showModal      = false;
+    private bool   _showValidation = false;
+    private bool   _saving         = false;
+    private string _searchText     = "";
+    private string _activeFilter   = "";
+    private string _modalError     = "";
+    private long?  _editingId      = null;
+
+
+    private List<Store> _sucursales = new();
+    private List<Store> _pageStores = new();
+    private int         _pageIndex  = 1;
+    private const int   _pageSize   = 10;
+    private int         _totalPages = 1;
+    private StoreFormVM _form       = new();
+
+    private static readonly string[] _avatarColors =
+    [
+        "#3d5166", "#5b6abf", "#0f766e", "#b45309",
+        "#7c3aed", "#0369a1", "#be185d", "#15803d"
+    ];
+
+    private CancellationTokenSource cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSucursales();
+    }
+
+    private async Task LoadSucursales()
+    {
+        try
+        {
+            _loading    = true;
+            _sucursales = await systemUserStoreRepository.GetStoresByUserIdAsync(posSessionService.SystemUserId);
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async void OnSearchInput(ChangeEventArgs e)
+    {
+        cts.Cancel();
+        cts = new();
+
+        try
+        {
+            await Task.Delay(300, cts.Token);
+
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex = 1;
+            ApplyFilter();
+        }
+        catch (TaskCanceledException)
+        {
+            //User still writing, do nothing and wait for the next event to trigger
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Error", "Error al buscar sucursales", "error");
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        ApplyFilter();
+    }
+
+    private void SetActiveFilter(string filter)
+    {
+        _activeFilter = _activeFilter == filter ? "" : filter;
+        _pageIndex    = 1;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var filtered = _sucursales.AsEnumerable();
+
+
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            string[] Words = Regex
+                    .Replace(_searchText
+                    .Trim(), @"\s+", " ")
+                    .Split(" ");
+
+            filtered = filtered.Where(s => Words.Any(word => s.Name.ToLower().Contains(word.ToLower())));
+        }
+
+
+        filtered = _activeFilter switch
+        {
+            "active"   => filtered.Where(s => s.Active),
+            "inactive" => filtered.Where(s => !s.Active),
+            _          => filtered
+        };
+
+        var list = filtered.ToList();
+
+        _totalPages = Math.Max(1, (int)Math.Ceiling(list.Count / (double)_pageSize));
+        if (_pageIndex > _totalPages) _pageIndex = _totalPages;
+
+        _pageStores = list
+            .Skip((_pageIndex - 1) * _pageSize)
+            .Take(_pageSize)
+            .ToList();
+    }
+
+    private void OpenNewModal()
+    {
+        _editingId      = null;
+        _form           = new StoreFormVM();
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+    }
+
+    private void OpenEditModal(Store s)
+    {
+        _editingId = s.StoreId;
+        _form = new StoreFormVM
+        {
+            Name         = s.Name,
+            Address      = s.Address,
+            Phone        = s.Phone,
+            TaxId        = s.TaxId,
+            LogoUrl      = s.LogoUrl,
+            Active       = s.Active,
+            ClaudeApiKey = s.ClaudeApiKey,
+        };
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+
+    private async Task SaveSucursal()
+    {
+        _showValidation = true;
+        _modalError     = "";
+
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _modalError = "El nombre de la sucursal es requerido.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            if (_editingId == null)
+            {
+                var nueva = new Store
+                {
+                    Name           = _form.Name.Trim(),
+                    Address        = _form.Address.Trim(),
+                    Phone          = _form.Phone.Trim(),
+                    TaxId          = _form.TaxId.Trim(),
+                    LogoUrl        = _form.LogoUrl.Trim(),
+                    Active         = true,
+                    CreatedAt      = DateTime.Now,
+                    BillingDueDate = DateTime.Now.AddDays(30),
+                    ClaudeApiKey   = string.IsNullOrWhiteSpace(_form.ClaudeApiKey) ? null : _form.ClaudeApiKey.Trim(),
+                };
+                await storeRepository.AddAsync(nueva);
+
+                // Asignar el admin actual a la nueva sucursal
+                await systemUserStoreRepository.AssignAsync(posSessionService.SystemUserId, nueva.StoreId);
+
+                // Sembrar configuraciones por defecto
+                await configRepository.AddRangeAsync(new Config[]
+                {
+                    new() { StoreId = nueva.StoreId, ConfigKey = "default_tax_rate",      Value = "12",                    Description = "Tasa de impuesto por defecto en %" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "ticket_footer",         Value = "Gracias por su compra", Description = "Leyenda al pie del ticket" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "folio_prefix",          Value = "T",                     Description = "Prefijo del número de ticket (ej: T-000001)" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "folio_padding",         Value = "6",                     Description = "Longitud numérica del folio con ceros" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "allow_negative_stock",  Value = "1",                     Description = "Positivo = permite vender aunque no haya existencia" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "require_customer_sale", Value = "0",                     Description = "Positivo = obliga asignar un cliente antes de cobrar" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "currency_symbol",       Value = "$",                     Description = "Símbolo monetario mostrado en pantalla" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "send_email_to_cashier_when_araise_low_stock",                           Value = "0", Description = "Enviar email a cajeros cuando hay stock bajo" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "send_email_to_supervisor_when_araise_low_stock",                        Value = "0", Description = "Enviar email a supervisores cuando hay stock bajo" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "send_email_to_admin_when_araise_low_stock",                             Value = "0", Description = "Enviar email a admins cuando hay stock bajo" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "send_email_to_admin_and_supervisor_when_a_cash_cut_is_not_exact_block",  Value = "0", Description = "Enviar email a admins y supervisores cuando un corte de caja no cuadra" },
+                    // Scheme Manager: esquema de colores por defecto para esta sucursal
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_bg",            Value = "#f0faf5", Description = "Fondo general del área de contenido POS" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_surface",       Value = "#ffffff",  Description = "Fondo de cards, tablas y modales" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_primary",       Value = "#1aacb1",  Description = "Color primario: botones, links, badges" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_primary_dark",  Value = "#148a8e",  Description = "Color primario oscuro: hover y gradientes" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_primary_light", Value = "#22c9ce",  Description = "Color primario claro" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_primary_muted", Value = "#d4f4f5",  Description = "Color primario muy suave: chips y badges" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_text",          Value = "#3A4656",  Description = "Texto principal" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_text_muted",    Value = "#64748b",  Description = "Texto secundario / gris" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_border",        Value = "#e2e8f0",  Description = "Bordes de inputs, tablas y divisores" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_success",       Value = "#4CAF50",  Description = "Verde: activo, confirmado" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_success_dark",  Value = "#3d8b40",  Description = "Verde oscuro: hover de éxito" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_warning",       Value = "#f59e0b",  Description = "Amarillo: alerta, pendiente" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_danger",        Value = "#ef4444",  Description = "Rojo: error, inactivo" },
+                    // Scheme Manager: tema activo + presets de tema claro y oscuro
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_active_theme",        Value = "light",   Description = "Tema activo del Scheme Manager: light o dark" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_bg",            Value = "#f0faf5", Description = "Tema claro: fondo general del área de contenido POS" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_surface",       Value = "#ffffff",  Description = "Tema claro: fondo de cards, tablas y modales" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_primary",       Value = "#1aacb1",  Description = "Tema claro: color primario" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_primary_dark",  Value = "#148a8e",  Description = "Tema claro: color primario oscuro" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_primary_light", Value = "#22c9ce",  Description = "Tema claro: color primario claro" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_primary_muted", Value = "#d4f4f5",  Description = "Tema claro: color primario suave" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_text",          Value = "#3A4656",  Description = "Tema claro: texto principal" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_text_muted",    Value = "#64748b",  Description = "Tema claro: texto secundario" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_border",        Value = "#e2e8f0",  Description = "Tema claro: bordes de inputs, tablas y divisores" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_success",       Value = "#4CAF50",  Description = "Tema claro: éxito" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_success_dark",  Value = "#3d8b40",  Description = "Tema claro: éxito oscuro" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_warning",       Value = "#f59e0b",  Description = "Tema claro: alerta" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_light_danger",        Value = "#ef4444",  Description = "Tema claro: error" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_bg",             Value = "#0f172a",  Description = "Tema oscuro: fondo general del área de contenido POS" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_surface",        Value = "#1e293b",  Description = "Tema oscuro: fondo de cards, tablas y modales" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_primary",        Value = "#1aacb1",  Description = "Tema oscuro: color primario" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_primary_dark",   Value = "#148a8e",  Description = "Tema oscuro: color primario oscuro" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_primary_light",  Value = "#22c9ce",  Description = "Tema oscuro: color primario claro" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_primary_muted",  Value = "#1a3a3b",  Description = "Tema oscuro: color primario suave" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_text",           Value = "#0be0dc",  Description = "Tema oscuro: texto principal" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_text_muted",     Value = "#94b8b7",  Description = "Tema oscuro: texto secundario" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_border",         Value = "#00fbff",  Description = "Tema oscuro: bordes de inputs, tablas y divisores" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_success",        Value = "#32dc38",  Description = "Tema oscuro: éxito" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_success_dark",   Value = "#3aa13e",  Description = "Tema oscuro: éxito oscuro" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_warning",        Value = "#ffa200",  Description = "Tema oscuro: alerta" },
+                    new() { StoreId = nueva.StoreId, ConfigKey = "pos_dark_danger",         Value = "#ff0000",  Description = "Tema oscuro: error" },
+                });
+
+                // Sembrar unidades de medida por defecto para esta sucursal
+                await unitRepository.AddRangeAsync(new Unit[]
+                {
+                    new() { StoreId = nueva.StoreId, Name = "Pieza",     Abbreviation = "pz",  Active = true },
+                    new() { StoreId = nueva.StoreId, Name = "Kilogramo", Abbreviation = "kg",  Active = true },
+                    new() { StoreId = nueva.StoreId, Name = "Litro",     Abbreviation = "L",   Active = true },
+                    new() { StoreId = nueva.StoreId, Name = "Metro",     Abbreviation = "m",   Active = true },
+                    new() { StoreId = nueva.StoreId, Name = "Caja",      Abbreviation = "cja", Active = true },
+                    new() { StoreId = nueva.StoreId, Name = "Paquete",   Abbreviation = "paq", Active = true },
+                });
+
+                // Refrescar la lista de sucursales accesibles en la sesión
+                var updated = await systemUserStoreRepository.GetStoresByUserIdAsync(posSessionService.SystemUserId);
+                posSessionService.SetAccessibleStores(updated);
+
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Sucursal creada correctamente. Ya aparece en el selector del header.", "success");
+            }
+            else
+            {
+                var existing = await storeRepository.GetOneByStoreIdAsync(_editingId.Value);
+                if (existing == null) return;
+
+                existing.Name         = _form.Name.Trim();
+                existing.Address      = _form.Address.Trim();
+                existing.Phone        = _form.Phone.Trim();
+                existing.TaxId        = _form.TaxId.Trim();
+                existing.LogoUrl      = _form.LogoUrl.Trim();
+                existing.Active       = _form.Active;
+                existing.ClaudeApiKey = string.IsNullOrWhiteSpace(_form.ClaudeApiKey) ? null : _form.ClaudeApiKey.Trim();
+                await storeRepository.UpdateAsync(existing);
+
+                // Si se editó la sucursal activa, actualizar el nombre en la sesión
+                if (existing.StoreId == posSessionService.StoreId)
+                    posSessionService.SwitchStore(existing.StoreId, existing.Name);
+
+                // Refrescar nombres en AccessibleStores
+                var updated = await systemUserStoreRepository.GetStoresByUserIdAsync(posSessionService.SystemUserId);
+                posSessionService.SetAccessibleStores(updated);
+
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Sucursal actualizada correctamente.", "success");
+            }
+
+            _showModal = false;
+            await LoadSucursales();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ToggleActive(Store s)
+    {
+        try
+        {
+            await storeRepository.ToggleActiveAsync(s.StoreId);
+            string msg = s.Active ? "Sucursal desactivada." : "Sucursal activada.";
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Éxito", msg, "success");
+
+            var updated = await systemUserStoreRepository.GetStoresByUserIdAsync(posSessionService.SystemUserId);
+            posSessionService.SetAccessibleStores(updated);
+
+            await LoadSucursales();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+    }
+
+    private static string GetInitial(Store s) =>
+        s.Name.Length > 0 ? s.Name[0].ToString().ToUpper() : "?";
+
+    private static string GetAvatarColor(long id) =>
+        _avatarColors[id % _avatarColors.Length];
+
+    private class StoreFormVM
+    {
+        public string  Name         { get; set; } = "";
+        public string  Address      { get; set; } = "";
+        public string  Phone        { get; set; } = "";
+        public string  TaxId        { get; set; } = "";
+        public string  LogoUrl      { get; set; } = "";
+        public bool    Active       { get; set; } = true;
+        public string? ClaudeApiKey { get; set; }
+    }
+}

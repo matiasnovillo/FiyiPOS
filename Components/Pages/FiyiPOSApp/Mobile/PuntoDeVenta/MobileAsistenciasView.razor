@@ -1,0 +1,102 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.AttendanceBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Common.AttendanceBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+
+@inject AttendanceRepository attendanceRepository
+@inject PosSessionService     posSessionService
+
+@if (_loading)
+{
+    <div style="display:flex;justify-content:center;align-items:center;padding:40px 0;">
+        <i class="fas fa-spinner fa-spin" style="font-size:1.6rem;color:#1aacb1;"></i>
+    </div>
+}
+else if (_rows.Count == 0)
+{
+    <div style="text-align:center;padding:40px 16px;color:#94a3b8;">
+        <i class="fas fa-user-clock" style="font-size:2rem;margin-bottom:8px;display:block;"></i>
+        No hay asistencias en los últimos 60 días.
+    </div>
+}
+else
+{
+    <div style="font-size:.72rem;color:#94a3b8;padding:0 2px 8px;display:flex;justify-content:space-between;">
+        <span>Últimas @_rows.Count asistencias</span>
+        <span>@_activeCount en curso</span>
+    </div>
+
+    @foreach (var row in _rows)
+    {
+        <div style="background:#fff;border-radius:12px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;">
+
+            <!-- Fila superior: nombre + estado -->
+            <div style="background:#0f172a;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+                <span style="color:#e2e8f0;font-size:.85rem;font-weight:600;">
+                    <i class="fas fa-user me-1" style="color:#1aacb1;"></i>@row.OperatorName
+                </span>
+                @if (row.IsActive)
+                {
+                    <span style="background:#059669;color:#fff;font-size:.7rem;padding:2px 8px;border-radius:99px;font-weight:600;">
+                        En curso
+                    </span>
+                }
+                else
+                {
+                    <span style="background:#1e293b;color:#94a3b8;font-size:.7rem;padding:2px 8px;border-radius:99px;">
+                        Completada
+                    </span>
+                }
+            </div>
+
+            <!-- Cuerpo: tiempos y duración -->
+            <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                    <div style="font-size:.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;">Entrada</div>
+                    <div style="font-size:.88rem;font-weight:700;color:#0f172a;">@row.CheckIn.ToString("HH:mm")</div>
+                    <div style="font-size:.72rem;color:#64748b;">@row.CheckIn.ToString("dd/MM/yyyy")</div>
+                </div>
+                <div>
+                    <div style="font-size:.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;">Salida</div>
+                    @if (row.CheckOut.HasValue)
+                    {
+                        <div style="font-size:.88rem;font-weight:700;color:#0f172a;">@row.CheckOut.Value.ToString("HH:mm")</div>
+                        <div style="font-size:.72rem;color:#64748b;">@row.CheckOut.Value.ToString("dd/MM/yyyy")</div>
+                    }
+                    else
+                    {
+                        <div style="font-size:.82rem;font-weight:600;color:#059669;">Activo</div>
+                    }
+                </div>
+                <div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f1f5f9;padding-top:8px;margin-top:2px;">
+                    <span style="font-size:.75rem;color:#64748b;">
+                        <i class="fas fa-store me-1"></i>@row.StoreName
+                    </span>
+                    <span style="font-size:.78rem;font-weight:600;color:#0f172a;background:#f1f5f9;padding:2px 8px;border-radius:6px;">
+                        <i class="fas fa-clock me-1" style="color:#1aacb1;"></i>@row.Duration
+                    </span>
+                </div>
+            </div>
+
+        </div>
+    }
+}
+
+@code {
+    private List<AttendanceRowDTO> _rows        = [];
+    private bool                   _loading     = true;
+    private int                    _activeCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var storeIds = posSessionService.AccessibleStores.Select(s => s.StoreId).ToList();
+        if (storeIds.Count == 0) storeIds = [posSessionService.StoreId];
+
+        var from = DateTime.Today.AddDays(-60);
+        var to   = DateTime.Today.AddDays(1);
+        var all  = await attendanceRepository.GetAllByStoreIdsAsync(storeIds, from, to);
+
+        _rows        = all.Take(20).ToList();
+        _activeCount = _rows.Count(r => r.IsActive);
+        _loading     = false;
+    }
+}

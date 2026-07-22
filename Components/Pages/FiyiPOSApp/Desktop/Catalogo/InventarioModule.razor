@@ -1,0 +1,556 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.InventoryMovementBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.InventoryMovementBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.InventoryMovementBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+
+@inject InventoryMovementRepository inventoryMovementRepository
+@inject ProductRepository           productRepository
+@inject PosSessionService           posSessionService
+@inject IJSRuntime                  JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">MOVIMIENTOS DE INVENTARIO</div>
+    <div class="header-sub">Historial de entradas, salidas y ajustes manuales de stock.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de movimientos</div>
+        <div class="stat-value">@_total</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Entradas de productos</div>
+        <div class="stat-value">@_countIn</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Salidas de productos</div>
+        <div class="stat-value">@_countOut</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Ajustes de productos</div>
+        <div class="stat-value">@_countAdjust</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nombre o código de barras..."
+               @bind="_searchText" @oninput="OnSearchInput" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nuevo movimiento
+    </button>
+</div>
+
+<!-- ── FILTROS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(_typeFilter == "" ? "active" : "")" @onclick='() => SetTypeFilter("")'>
+        Todos
+    </button>
+    <button class="filter-chip @(_typeFilter == "IN" ? "active" : "")"
+            @onclick='() => SetTypeFilter("IN")'>
+        <i class="fas fa-arrow-circle-down"></i> Entradas
+    </button>
+    <button class="filter-chip @(_typeFilter == "OUT" ? "active" : "")"
+            @onclick='() => SetTypeFilter("OUT")'>
+        <i class="fas fa-arrow-circle-up"></i> Salidas
+    </button>
+    <button class="filter-chip @(_typeFilter == "ADJUST" ? "active" : "")"
+            @onclick='() => SetTypeFilter("ADJUST")'>
+        <i class="fas fa-balance-scale"></i> Ajustes
+    </button>
+
+    <span class="inv-date-separator"></span>
+
+    <label class="inv-date-label fs-6 mt-2"><i class="fas fa-calendar-day me-1"></i>Desde</label>
+    <input type="date" class="inv-date-input fs-6" @bind="_dateFrom" @bind:after="OnDateFilterChanged" />
+
+    <label class="inv-date-label fs-6 mt-2">Hasta</label>
+    <input type="date" class="inv-date-input fs-6" @bind="_dateTo" @bind:after="OnDateFilterChanged" />
+
+    @if (_dateFrom.HasValue || _dateTo.HasValue)
+    {
+        <button class="filter-chip" @onclick="ClearDateFilter">
+            <i class="fas fa-times"></i> Limpiar fechas
+        </button>
+    }
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando movimientos...</p>
+        </div>
+    }
+    else if (!_pageMovements.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-boxes"></i>
+            <p>No hay movimientos registrados</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Producto</th>
+                    <th>Tipo</th>
+                    <th>Cantidad</th>
+                    <th>Stock antes → después</th>
+                    <th>Motivo / Referencia</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var mv in _pageMovements)
+                {
+                    <tr>
+                        <td class="fs-6">
+                            @mv.MovementDate.ToString("dd/MM/yyyy HH:mm")
+                        </td>
+                        <td>
+                            <div class="fw-semibold fs-6">@mv.ProductName</div>
+                            <div class="fs-6">
+                                @(string.IsNullOrWhiteSpace(mv.Barcode) ? "Sin código" : mv.Barcode)
+                            </div>
+                        </td>
+                        <td>
+                            <span class="mv-type-badge mv-@mv.MovementType.ToLower()">
+                                @(mv.MovementType switch { "IN" => "Entrada", "OUT" => "Salida", _ => "Ajuste" })
+                            </span>
+                        </td>
+                        <td class="fs-6 fw-semibold">
+                            @(mv.Quantity >= 0 ? "+" : "")@mv.Quantity.ToString("N2")
+                        </td>
+                        <td class="fs-6">
+                            @mv.StockBefore.ToString("N2") → <strong>@mv.StockAfter.ToString("N2")</strong>
+                        </td>
+                        <td class="fs-6" style="white-space:pre-wrap;">
+                            @if (!string.IsNullOrWhiteSpace(mv.Reason))
+                            {
+                                <div>@mv.Reason</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(mv.Reference))
+                            {
+                                <div>@mv.Reference</div>
+                            }
+                            @if (string.IsNullOrWhiteSpace(mv.Reason) && string.IsNullOrWhiteSpace(mv.Reference))
+                            {
+                                <span>—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_total > 0)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+        @for (int p = winStart; p <= winEnd; p++)
+        {
+            int pg = p;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+<!-- ── MODAL: Nuevo movimiento ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:560px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-exchange-alt me-2"></i>Nuevo movimiento</span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-section">Producto</div>
+
+                <div class="inv-search-row">
+                    <div class="inv-search-wrap">
+                        <i class="fas fa-barcode"></i>
+                        <input type="text"
+                               placeholder="Código de barras o nombre del producto..."
+                               @bind="_productSearch"
+                               @bind:event="oninput"
+                               @onkeydown="HandleSearchKeyDown" />
+                    </div>
+                </div>
+
+                @if (_productSearch.Length >= 2 && _searchResults.Any() && _selectedProduct == null)
+                {
+                    <div class="inv-search-results">
+                        @foreach (var p in _searchResults.Take(6))
+                        {
+                            <div class="inv-search-result-row" @onclick="() => SelectProduct(p)">
+                                <span class="inv-res-name fs-6">@p.Name</span>
+                                <span class="inv-res-barcode fs-6">@p.Barcode</span>
+                                <span class="inv-res-stock fs-6">Stock: @p.Stock.ToString("N2")</span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (_selectedProduct != null)
+                {
+                    <div class="inv-product-card">
+                        <div class="inv-product-name fs-6">@_selectedProduct.Name</div>
+                        <div class="inv-product-meta">
+                            <span class="fs-6"><i class="fas fa-barcode fa-xl me-1"></i>@_selectedProduct.Barcode</span>
+                            <span class="fs-6"><i class="fas fa-cubes fa-xl me-1"></i>Stock actual: <strong>@_selectedProduct.Stock.ToString("N2")</strong></span>
+                        </div>
+                        <button class="inv-clear-btn fs-6" @onclick="ClearProduct">
+                            <i class="fas fa-times fa-xl"></i> Cambiar producto
+                        </button>
+                    </div>
+
+                    <div class="panel-section">Tipo de movimiento</div>
+
+                    <div class="mv-type-selector">
+                        <button class="mv-type-btn @(_movementType == "IN" ? "active-in" : "")"
+                                @onclick='() => _movementType = "IN"'>
+                            <i class="fas fa-arrow-circle-down"></i>
+                            <span class="fs-6 fw-bold">Entrada</span>
+                            <small class="fs-6">Agrega stock</small>
+                        </button>
+                        <button class="mv-type-btn @(_movementType == "OUT" ? "active-out" : "")"
+                                @onclick='() => _movementType = "OUT"'>
+                            <i class="fas fa-arrow-circle-up"></i>
+                            <span class="fs-6 fw-bold">Salida</span>
+                            <small class="fs-6">Reduce stock</small>
+                        </button>
+                        <button class="mv-type-btn @(_movementType == "ADJUST" ? "active-adj" : "")"
+                                @onclick='() => _movementType = "ADJUST"'>
+                            <i class="fas fa-balance-scale"></i>
+                            <span class="fs-6 fw-bold">Ajuste</span>
+                            <small class="fs-6">Fija la existencia exacta</small>
+                        </button>
+                    </div>
+
+                    <div class="panel-section">
+                        @(_movementType == "ADJUST" ? "Nueva existencia (conteo físico)" : "Cantidad")
+                    </div>
+
+                    <div class="inv-qty-row">
+                        <div class="inv-qty-wrap">
+                            <input type="number"
+                                   min="0" step="@(_selectedProduct.AllowFractional ? "0.01" : "1")"
+                                   @bind="_quantity"
+                                   placeholder="@(_movementType == "ADJUST" ? "Ej: 47" : "Ej: 5")" />
+                        </div>
+                        @if (_movementType == "ADJUST" && _quantity > 0)
+                        {
+                            decimal delta = _quantity - _selectedProduct.Stock;
+                            <div class="inv-adjust-preview @(delta > 0 ? "adj-pos" : delta < 0 ? "adj-neg" : "adj-ok")">
+                                @(delta >= 0 ? "+" : "")@delta.ToString("N2")
+                                <span>@(delta > 0 ? "sobrante" : delta < 0 ? "faltante" : "sin cambio")</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="panel-grid">
+                        <div class="field">
+                            <label>Motivo</label>
+                            <textarea @bind="_reason" rows="3"
+                                      placeholder="Ej: Merma, devolución proveedor..."></textarea>
+                        </div>
+                        <div class="field">
+                            <label>Referencia</label>
+                            <textarea @bind="_reference" rows="3"
+                                      placeholder="Ej: Nota de entrega #12"></textarea>
+                        </div>
+                    </div>
+                }
+
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmMovementAsync"
+                        disabled="@(_saving || _selectedProduct == null || _quantity <= 0)">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check-double")"></i>
+                    @(_saving ? "Guardando..." : "Confirmar")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+
+    // ── State ─────────────────────────────────────────────
+    private bool      _loading    = true;
+    private bool      _showModal  = false;
+    private bool      _saving     = false;
+    private string    _searchText = "";
+    private string    _typeFilter = "";
+    private string    _modalError = "";
+    private DateTime? _dateFrom   = null;
+    private DateTime? _dateTo     = null;
+
+    // ── Pagination ────────────────────────────────────────
+    private List<InventoryMovementLineDTO> _pageMovements = new();
+    private int  _pageIndex  = 1;
+    private const int _pageSize = 15;
+    private int  _totalPages = 1;
+
+    // ── Stats ─────────────────────────────────────────────
+    private int _total       = 0;
+    private int _countIn     = 0;
+    private int _countOut    = 0;
+    private int _countAdjust = 0;
+
+    // ── Modal: product search ─────────────────────────────
+    private string        _productSearch  = "";
+    private List<Product> _allProducts    = new();
+    private List<Product> _searchResults  = new();
+    private Product?      _selectedProduct;
+
+    // ── Modal: movement form ──────────────────────────────
+    private string  _movementType = "IN";
+    private decimal _quantity     = 0;
+    private string  _reason       = "";
+    private string  _reference    = "";
+
+    private CancellationTokenSource cts = new();
+
+    // ── Lifecycle ─────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadStats(), LoadPage(), LoadAllProducts());
+        _loading = false;
+    }
+
+    private async Task LoadStats()
+    {
+        (_total, _countIn, _countOut, _countAdjust) =
+            await inventoryMovementRepository.GetCountsByStoreIdAsync(posSessionService.StoreId);
+    }
+
+    private async Task LoadPage()
+    {
+        var result = await inventoryMovementRepository.GetAllPaginatedByStoreIdAsync(
+            posSessionService.StoreId, _searchText, _typeFilter, _pageIndex, _pageSize,
+            _dateFrom, _dateTo);
+
+        _totalPages    = Math.Max(1, result.TotalPages);
+        _pageMovements = result.ListMovements;
+    }
+
+    private async Task LoadAllProducts()
+    {
+        _allProducts = await productRepository.GetAllActiveByStoreIdAsync(posSessionService.StoreId);
+    }
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        await LoadPage();
+    }
+
+    private async void OnSearchInput(ChangeEventArgs e)
+    {
+        cts.Cancel();
+        cts = new();
+
+        try
+        {
+            await Task.Delay(300, cts.Token);
+
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex = 1;
+            await LoadPage();
+        }
+        catch (TaskCanceledException)
+        {
+            //User still writing, do nothing and wait for the next event to trigger
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Error", "Error al cargar inventario", "error");
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SetTypeFilter(string type)
+    {
+        _typeFilter = type;
+        _pageIndex  = 1;
+        await LoadPage();
+    }
+
+    private async Task OnDateFilterChanged()
+    {
+        _pageIndex = 1;
+        await LoadPage();
+    }
+
+    private async Task ClearDateFilter()
+    {
+        _dateFrom  = null;
+        _dateTo    = null;
+        _pageIndex = 1;
+        await LoadPage();
+    }
+
+    // ── Modal ─────────────────────────────────────────────
+    private void OpenNewModal()
+    {
+        _productSearch   = "";
+        _selectedProduct = null;
+        _searchResults.Clear();
+        _movementType = "IN";
+        _quantity     = 0;
+        _reason       = "";
+        _reference    = "";
+        _modalError   = "";
+        _showModal    = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal  = false;
+        _modalError = "";
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { _productSearch = ""; _searchResults.Clear(); }
+        ApplyProductSearch();
+    }
+
+    private void ApplyProductSearch()
+    {
+        if (_productSearch.Length < 2) { _searchResults.Clear(); return; }
+        string q = _productSearch.ToLower();
+        _searchResults = _allProducts
+            .Where(p => p.Name.ToLower().Contains(q) || p.Barcode.ToLower().Contains(q))
+            .ToList();
+    }
+
+    private void SelectProduct(Product p)
+    {
+        _selectedProduct = p;
+        _productSearch   = "";
+        _searchResults.Clear();
+        _quantity = 0;
+    }
+
+    private void ClearProduct()
+    {
+        _selectedProduct = null;
+        _productSearch   = "";
+        _quantity        = 0;
+    }
+
+    private async Task ConfirmMovementAsync()
+    {
+        if (_selectedProduct == null || _quantity <= 0) return;
+
+        _saving     = true;
+        _modalError = "";
+        try
+        {
+            var movement = new InventoryMovement
+            {
+                ProductId    = _selectedProduct.ProductId,
+                SystemUserId = posSessionService.SystemUserId,
+                MovementType = _movementType,
+                Quantity     = _quantity,
+                Reason       = string.IsNullOrWhiteSpace(_reason)    ? null : _reason.Trim(),
+                Reference    = string.IsNullOrWhiteSpace(_reference) ? null : _reference.Trim(),
+            };
+
+            await inventoryMovementRepository.AddAsync(movement);
+
+            string typeLabel = _movementType switch { "IN" => "Entrada", "OUT" => "Salida", _ => "Ajuste" };
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", $"{typeLabel} registrada correctamente.", "success");
+
+            _showModal = false;
+
+            // Refresh stats, grid, and product stock cache in parallel
+            _allProducts = await productRepository.GetAllActiveByStoreIdAsync(posSessionService.StoreId);
+            await Task.WhenAll(LoadStats(), LoadPage());
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -1,0 +1,920 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.CashCutDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Entities
+@using FiyiPOS.DatabaseContexts
+@using FiyiPOS.Mailing
+@using FiyiPOS.Services.FiyiPOS
+@using System.Text
+@using Microsoft.EntityFrameworkCore
+
+@inject CashCutRepository cashCutRepository
+@inject CashMovementRepository cashMovementRepository
+@inject PosSessionService posSessionService
+@inject IServiceScopeFactory _scopeFactory
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">CORTE DE CAJA</div>
+    <div class="header-sub">Cierre del turno: verificación y cuadre del efectivo en la gaveta.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de cortes</div>
+        <div class="stat-value">@_totalCount</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Total ventas registradas</div>
+        <div class="stat-value">@_statTotalSales</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Cortes con faltante</div>
+        <div class="stat-value">@_statShortfall</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Cortes con sobrante</div>
+        <div class="stat-value">@_statSurplus</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Filtrar por notas..."
+               value="@_historyFilter"
+               @oninput="OnHistoryFilterInput" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="OpenNewCutModal">
+        <i class="fas fa-scissors"></i> Nuevo corte
+    </button>
+</div>
+
+<!-- ── FILTROS DE FECHA ── -->
+<div class="toolbar" style="padding-top:0;gap:.75rem;flex-wrap:wrap;">
+    <span class="fs-6" style="color:var(--text-muted);white-space:nowrap;">
+        <i class="fas fa-calendar-alt me-1"></i> Período:
+    </span>
+    <input type="date"
+           class="config-input fs-6"
+           style="max-width:160px;"
+           value="@_dateFrom?.ToString("yyyy-MM-dd")"
+           @onchange="OnDateFromChanged" />
+    <span class="fs-6" style="color:var(--text-muted);">—</span>
+    <input type="date"
+           class="config-input fs-6"
+           style="max-width:160px;"
+           value="@_dateTo?.ToString("yyyy-MM-dd")"
+           @onchange="OnDateToChanged" />
+    @if (_dateFrom.HasValue || _dateTo.HasValue)
+    {
+        <button class="abtn abtn-sky" @onclick="ClearDates">
+            <i class="fas fa-times"></i> Limpiar fechas
+        </button>
+    }
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loadingHistory)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando historial...</p>
+        </div>
+    }
+    else if (!_history.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-history"></i>
+            <p>@(_historyFilter.Length > 0 || _dateFrom.HasValue || _dateTo.HasValue ? "Sin resultados para los filtros aplicados" : "Sin cortes anteriores")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Fecha de cierre</th>
+                    <th>Período</th>
+                    <th>Ventas</th>
+                    <th>Fondo inicial</th>
+                    <th>Esperado</th>
+                    <th>Contado</th>
+                    <th>Diferencia</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var cut in _history)
+                {
+                    <tr>
+                        <td class="fs-6">@cut.ClosedAt?.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="fs-6" style="color:var(--text-muted);">
+                            @cut.OpenedAt.ToString("dd/MM HH:mm") → @cut.ClosedAt?.ToString("dd/MM HH:mm")
+                        </td>
+                        <td class="fs-6">@cut.TotalSales</td>
+                        <td class="fs-6">$@cut.OpeningAmount.ToString("N2")</td>
+                        <td class="fs-6">$@cut.ExpectedAmount.ToString("N2")</td>
+                        <td class="fs-6">$@cut.ActualAmount.ToString("N2")</td>
+                        <td>
+                            @if (cut.Difference < 0)
+                            {
+                                <span class="cr-badge cr-overdue fs-6">@cut.Difference.ToString("N2")</span>
+                            }
+                            else if (cut.Difference > 0)
+                            {
+                                <span class="credit-badge credit-yes fs-6">+@cut.Difference.ToString("N2")</span>
+                            }
+                            else
+                            {
+                                <span class="cr-badge cr-paid fs-6">$0,00</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenDetailModal(cut)">
+                                <i class="fas fa-eye"></i> Ver detalle
+                            </button>
+                            <button class="abtn abtn-sky" @onclick="() => DownloadReportAsync(cut)"
+                                    disabled="@(_loadingReportId == cut.CashCutId)">
+                                <i class="fas @(_loadingReportId == cut.CashCutId ? "fa-spinner fa-spin" : "fa-file-pdf")"></i>
+                                @(_loadingReportId == cut.CashCutId ? "Generando..." : "Descargar informe")
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="mov-pag-row">
+            <button class="abtn abtn-sky" disabled="@(_pageIndex <= 1)" @onclick="() => GoToPage(_pageIndex - 1)">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            @{
+                int startPage = Math.Max(1, _pageIndex - 3);
+                int endPage   = Math.Min(_totalPages, _pageIndex + 3);
+            }
+            @for (int p = startPage; p <= endPage; p++)
+            {
+                int pg = p;
+                <button class="abtn @(pg == _pageIndex ? "abtn-primary" : "abtn-sky")"
+                        @onclick="() => GoToPage(pg)">
+                    @pg
+                </button>
+            }
+            <button class="abtn abtn-sky" disabled="@(_pageIndex >= _totalPages)" @onclick="() => GoToPage(_pageIndex + 1)">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+            <span class="fs-6" style="color:var(--text-muted);margin-left:.4rem;">
+                Página @_pageIndex de @_totalPages
+            </span>
+        </div>
+    }
+</div>
+
+<!-- ── MODAL: Nuevo corte ── -->
+@if (_showNewCutModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:720px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-scissors me-2"></i>Nuevo corte de caja</span>
+                <button class="panel-close fs-3" @onclick="CloseNewCutModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                @if (_loadingPreview)
+                {
+                    <div class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Calculando el período...</p>
+                    </div>
+                }
+                else if (_preview != null)
+                {
+                    <div class="cr-duedate-banner" style="margin-bottom:.8rem;">
+                        <i class="fas fa-calendar-alt me-2"></i>
+                        Período: <strong>@_preview.PeriodStart.ToString("dd/MM/yyyy HH:mm")</strong>
+                        → <strong>@_preview.PeriodEnd.ToString("dd/MM/yyyy HH:mm")</strong>
+                        &nbsp;·&nbsp; <strong>@_preview.SalesCount ventas</strong>
+                        &nbsp;·&nbsp; Recaudado: <strong>$@_preview.TotalRevenue.ToString("N2")</strong>
+                    </div>
+
+                    <div class="panel-section">Recaudación por forma de pago</div>
+
+                    @if (!_preview.Lines.Any())
+                    {
+                        <div class="cr-empty-payments">
+                            <i class="fas fa-info-circle fa-xl me-1"></i>
+                            <span class="fs-6">No hay ventas en este período. Igual podés registrar el corte</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="data-table" style="margin-bottom:.8rem;">
+                            <thead>
+                                <tr>
+                                    <th>Método</th>
+                                    <th>Transacciones</th>
+                                    <th>Total</th>
+                                    <th>Efectivo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in _preview.Lines)
+                                {
+                                    <tr>
+                                        <td class="fs-6">
+                                            <i class="fas @GetPaymentIcon(line.PaymentMethodName) me-1"></i>
+                                            @line.PaymentMethodName
+                                        </td>
+                                        <td class="fs-6" style="text-align:center;">@line.TransactionCount</td>
+                                        <td class="fs-6" style="text-align:right;font-weight:600;">$@line.TotalCollected.ToString("N2")</td>
+                                        <td style="text-align:center;">
+                                            @if (line.IsCash)
+                                            {
+                                                <i class="fas fa-check-circle" style="color:#059669;"></i>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    <div class="panel-section">Datos del cierre</div>
+
+                    <div class="panel-grid">
+                        <div class="field">
+                            <label>Fondo inicial <span class="required-star">*</span></label>
+                            <input type="number" min="0" step="0.01"
+                                   @bind="_openingAmount" @bind:event="oninput" />
+                            <span class="fs-6" style="color:var(--text-muted);">Plata que pusiste en la gaveta al abrir el turno</span>
+                        </div>
+                        <div class="field">
+                            <label>Monto esperado en caja</label>
+                            <div style="padding:.4rem .6rem;background:var(--surface-2,#f3f4f6);border-radius:6px;font-weight:600;">
+                                $@_expectedAmount.ToString("N2")
+                                <span class="fs-6" style="color:var(--text-muted);font-weight:400;">
+                                    = Fondo + efectivo ($@_cashSalesTotal.ToString("N2"))
+                                    @if (_preview?.TotalCashIn > 0)
+                                    {
+                                        <span> + entradas ($@_preview!.TotalCashIn.ToString("N2"))</span>
+                                    }
+                                    @if (_preview?.TotalCashOut > 0)
+                                    {
+                                        <span> − salidas ($@_preview!.TotalCashOut.ToString("N2"))</span>
+                                    }
+                                </span>
+                            </div>
+                        </div>
+                        @if (_expectedAmount < 0)
+                        {
+                            <div class="dialog-error" style="margin-top:-.25rem;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                El monto esperado es negativo. Esto indica que se registraron más salidas que entradas de efectivo en el período. Verificá que los pagos de compras o retiros hayan sido registrados con el método de pago correcto.
+                            </div>
+                        }
+                        <div class="field">
+                            <label>Monto contado físicamente <span class="required-star">*</span></label>
+                            <input type="number" min="0" step="0.01"
+                                   @bind="_actualAmount" @bind:event="oninput"
+                                   @bind:after="SyncLeftInDrawer" />
+                            <span class="fs-6" style="color:var(--text-muted);">Lo que contaste billete a billete</span>
+                        </div>
+                        <div class="field">
+                            <label>Diferencia</label>
+                            <div class="corte-diff-box @(_difference < 0 ? "diff-neg" : _difference > 0 ? "diff-pos" : "diff-ok")">
+                                @(_difference >= 0 ? "+" : "")@_difference.ToString("N2")
+                                @if (_difference == 0) { <span> (cuadra exacto)</span> }
+                                else if (_difference > 0) { <span> (sobrante)</span> }
+                                else { <span> (faltante)</span> }
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label>Monto que dejo en caja</label>
+                            <input type="number" min="0" step="0.01"
+                                   @bind="_amountLeftInDrawer" @bind:event="oninput"
+                                   @bind:after="MarkLeftInDrawerManual" />
+                            <span class="fs-6" style="color:var(--text-muted);">
+                                @if (_amountLeftInDrawer == _actualAmount)
+                                {
+                                    @:Sin movimiento extra
+                                }
+                                else if (_amountLeftInDrawer > _actualAmount)
+                                {
+                                    @:Se registrará entrada de $@((_amountLeftInDrawer - _actualAmount).ToString("N2"))
+                                }
+                                else
+                                {
+                                    @:Se registrará salida de $@((_actualAmount - _amountLeftInDrawer).ToString("N2"))
+                                }
+                            </span>
+                        </div>
+                        <div class="field field-full">
+                            <label>Notas / Observaciones</label>
+                            <textarea @bind="_notes" rows="2" placeholder="Observaciones opcionales del turno..."></textarea>
+                        </div>
+                    </div>
+                }
+
+            </div>
+
+            @if (_preview != null && !_loadingPreview)
+            {
+                <div class="panel-footer">
+                    <button class="abtn abtn-danger" @onclick="ReloadPreview" disabled="@_saving">
+                        <i class="fas fa-sync-alt"></i> Actualizar período
+                    </button>
+                    <button class="abtn abtn-success" @onclick="ConfirmCutAsync" disabled="@_saving">
+                        <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check-double")"></i>
+                        @(_saving ? "Guardando..." : "Confirmar corte")
+                    </button>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Detalle de corte anterior ── -->
+@if (_showDetailModal && _selectedCut != null)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:640px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-receipt me-2"></i>Corte del @_selectedCut.ClosedAt?.ToString("dd/MM/yyyy 'a las' HH:mm")</span>
+                <button class="panel-close fs-3" @onclick="() => _showDetailModal = false">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="cr-kpi-row">
+                    <div class="cr-kpi">
+                        <div class="cr-kpi-label">Período</div>
+                        <div class="cr-kpi-value" style="font-size:.85rem;">
+                            @_selectedCut.OpenedAt.ToString("dd/MM HH:mm") → @_selectedCut.ClosedAt?.ToString("dd/MM HH:mm")
+                        </div>
+                    </div>
+                    <div class="cr-kpi">
+                        <div class="cr-kpi-label">Ventas</div>
+                        <div class="cr-kpi-value">@_selectedCut.TotalSales</div>
+                    </div>
+                    <div class="cr-kpi">
+                        <div class="cr-kpi-label">Fondo inicial</div>
+                        <div class="cr-kpi-value">$@_selectedCut.OpeningAmount.ToString("N2")</div>
+                    </div>
+                    <div class="cr-kpi">
+                        <div class="cr-kpi-label">Esperado en caja</div>
+                        <div class="cr-kpi-value">$@_selectedCut.ExpectedAmount.ToString("N2")</div>
+                    </div>
+                    <div class="cr-kpi">
+                        <div class="cr-kpi-label">Contado físicamente</div>
+                        <div class="cr-kpi-value">$@_selectedCut.ActualAmount.ToString("N2")</div>
+                    </div>
+                    <div class="cr-kpi cr-kpi-highlight @(_selectedCut.Difference < 0 ? "cr-kpi-overdue-hl" : "")">
+                        <div class="cr-kpi-label">Diferencia</div>
+                        <div class="cr-kpi-value">@(_selectedCut.Difference >= 0 ? "+" : "")@_selectedCut.Difference.ToString("N2")</div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_selectedCut.Notes))
+                {
+                    <div class="cr-notes-box" style="margin-top:.5rem;">
+                        <i class="fas fa-sticky-note me-1"></i>@_selectedCut.Notes
+                    </div>
+                }
+
+            </div>
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDetailModal = false">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+
+    // ── History (server-side pagination) ──────────────
+    private bool          _loadingHistory = true;
+    private List<CashCut> _history        = new();
+    private CashCut?      _selectedCut;
+    private string        _historyFilter  = "";
+    private DateTime?     _dateFrom       = null;
+    private DateTime?     _dateTo         = null;
+    private int           _pageIndex      = 1;
+    private const int     _pageSize       = 15;
+    private int           _totalCount     = 0;
+    private int           _statTotalSales = 0;
+    private int           _statShortfall  = 0;
+    private int           _statSurplus    = 0;
+    private int           _totalPages     => Math.Max(1, (int)Math.Ceiling(_totalCount / (double)_pageSize));
+    private CancellationTokenSource _filterCts = new();
+
+    private bool   _showDetailModal = false;
+    private bool   _showNewCutModal = false;
+
+    // ── Preview / new cut ──────────────────────────────
+    private bool               _loadingPreview = false;
+    private bool               _saving         = false;
+    private CashCutPreviewDTO? _preview;
+
+    private decimal _openingAmount          = 0;
+    private decimal _actualAmount           = 0;
+    private decimal _amountLeftInDrawer     = 0;
+    private bool    _leftInDrawerManualSet  = false;
+    private string  _notes                  = "";
+
+    private decimal _cashSalesTotal    => _preview?.Lines.Where(l => l.IsCash).Sum(l => l.TotalCollected) ?? 0;
+    private decimal _cashMovementsNet  => (_preview?.TotalCashIn ?? 0) - (_preview?.TotalCashOut ?? 0);
+    private decimal _expectedAmount    => _openingAmount + _cashSalesTotal + _cashMovementsNet;
+    private decimal _difference        => _actualAmount - _expectedAmount;
+
+    // ── Lifecycle ──────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _loadingHistory = true;
+        var result = await cashCutRepository.GetPagedAsync(
+            posSessionService.StoreId, _pageIndex, _pageSize,
+            _dateFrom, _dateTo,
+            string.IsNullOrWhiteSpace(_historyFilter) ? null : _historyFilter);
+        _history        = result.Items;
+        _totalCount     = result.TotalCount;
+        _statTotalSales = result.TotalSales;
+        _statShortfall  = result.ShortfallCount;
+        _statSurplus    = result.SurplusCount;
+        _loadingHistory = false;
+    }
+
+    private async Task OnHistoryFilterInput(ChangeEventArgs e)
+    {
+        _historyFilter = e.Value?.ToString() ?? string.Empty;
+        _pageIndex = 1;
+        _filterCts.Cancel();
+        _filterCts = new CancellationTokenSource();
+        var cts = _filterCts;
+        try
+        {
+            await Task.Delay(350, cts.Token);
+            await LoadHistoryAsync();
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task OnDateFromChanged(ChangeEventArgs e)
+    {
+        _dateFrom  = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null;
+        _pageIndex = 1;
+        await LoadHistoryAsync();
+    }
+
+    private async Task OnDateToChanged(ChangeEventArgs e)
+    {
+        _dateTo    = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null;
+        _pageIndex = 1;
+        await LoadHistoryAsync();
+    }
+
+    private async Task ClearDates()
+    {
+        _dateFrom  = null;
+        _dateTo    = null;
+        _pageIndex = 1;
+        await LoadHistoryAsync();
+    }
+
+    private async Task GoToPage(int page)
+    {
+        _pageIndex = page;
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadPreviewAsync()
+    {
+        _loadingPreview = true;
+        _preview = await cashCutRepository.GetPreviewAsync(posSessionService.StoreId);
+        _loadingPreview = false;
+    }
+
+    private async Task OpenNewCutModal()
+    {
+        _openingAmount         = 0;
+        _actualAmount          = 0;
+        _amountLeftInDrawer    = 0;
+        _leftInDrawerManualSet = false;
+        _notes                 = "";
+        _showNewCutModal = true;
+        if (_preview == null)
+            await LoadPreviewAsync();
+    }
+
+    private void CloseNewCutModal()
+    {
+        _showNewCutModal = false;
+    }
+
+    private void OpenDetailModal(CashCut cut)
+    {
+        _selectedCut    = cut;
+        _showDetailModal = true;
+    }
+
+    private async Task ReloadPreview()
+    {
+        _loadingPreview = true;
+        _preview = await cashCutRepository.GetPreviewAsync(posSessionService.StoreId);
+        _loadingPreview = false;
+    }
+
+    private void SyncLeftInDrawer()
+    {
+        if (!_leftInDrawerManualSet)
+            _amountLeftInDrawer = _actualAmount;
+    }
+
+    private void MarkLeftInDrawerManual() => _leftInDrawerManualSet = true;
+
+    // ── Confirm ────────────────────────────────────────
+    private async Task ConfirmCutAsync()
+    {
+        if (_preview == null) return;
+
+        _saving = true;
+        try
+        {
+            var cashCut = new CashCut
+            {
+                StoreId        = posSessionService.StoreId,
+                SystemUserId   = posSessionService.SystemUserId,
+                OpeningAmount  = _openingAmount,
+                ExpectedAmount = _expectedAmount,
+                ActualAmount   = _actualAmount,
+                Difference     = _difference,
+                TotalSales     = _preview.SalesCount,
+                OpenedAt       = _preview.PeriodStart,
+                Notes          = string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim(),
+            };
+
+            var details = _preview.Lines.Select(l => new CashCutDetail
+            {
+                PaymentMethodId  = l.PaymentMethodId,
+                TotalCollected   = l.TotalCollected,
+                TransactionCount = l.TransactionCount,
+            }).ToList();
+
+            await cashCutRepository.CreateAsync(cashCut, details);
+
+            if (_difference != 0)
+            {
+                long   storeId      = posSessionService.StoreId;
+                string storeName    = posSessionService.StoreName;
+                string operatorName = posSessionService.OperatorName;
+                decimal diff        = _difference;
+                decimal expected    = _expectedAmount;
+                decimal actual      = _actualAmount;
+                DateTime closedAt   = DateTime.Now;
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await using var scope  = _scopeFactory.CreateAsyncScope();
+                        var config = scope.ServiceProvider.GetRequiredService<ConfigRepository>();
+                        if (await config.GetValueByStoreAsync(storeId, "send_email_to_admin_and_supervisor_when_a_cash_cut_is_not_exact_block") != "1") return;
+
+                        var db    = scope.ServiceProvider.GetRequiredService<IDbContextFactory<FiyiPOSDbContext>>();
+                        var email = scope.ServiceProvider.GetRequiredService<Email>();
+
+                        await using var ctx = await db.CreateDbContextAsync();
+                        var recipients = await (
+                            from u  in ctx.SystemUser
+                            join us in ctx.SystemUserStore on u.SystemUserId equals us.SystemUserId
+                            where us.StoreId == storeId
+                                  && (u.Role == "supervisor" || u.Role == "admin")
+                                  && u.Active
+                            select new { u.Username, u.Name }
+                        ).ToListAsync();
+
+                        foreach (var r in recipients)
+                            await email.SendCashCutDiscrepancyAlertAsync(
+                                r.Username, r.Name,
+                                storeName, operatorName,
+                                diff, expected, actual, closedAt);
+                    }
+                    catch { }
+                });
+            }
+
+            decimal leftDiff = _amountLeftInDrawer - _actualAmount;
+            if (leftDiff != 0)
+            {
+                string operatorName = posSessionService.OperatorName;
+                await cashMovementRepository.AddAsync(new CashMovement
+                {
+                    StoreId      = posSessionService.StoreId,
+                    SystemUserId = posSessionService.SystemUserId,
+                    Type         = leftDiff > 0 ? "IN" : "OUT",
+                    Amount       = Math.Abs(leftDiff),
+                    Reason       = leftDiff > 0
+                        ? $"Corte de caja. El usuario {operatorName} dejó ${leftDiff:N2} de más"
+                        : $"Corte de caja. El usuario {operatorName} se lleva ${Math.Abs(leftDiff):N2}",
+                });
+            }
+
+            _openingAmount         = 0;
+            _actualAmount          = 0;
+            _amountLeftInDrawer    = 0;
+            _leftInDrawerManualSet = false;
+            _notes                 = "";
+            _preview               = null;
+
+            CloseNewCutModal();
+            await LoadHistoryAsync();
+
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", "Corte de caja registrado correctamente.", NotificationTypeForJs.Success);
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Report download ───────────────────────────────
+    private long _loadingReportId = 0;
+
+    private async Task DownloadReportAsync(CashCut cut)
+    {
+        _loadingReportId = cut.CashCutId;
+        try
+        {
+            var report = await cashCutRepository.GetReportDataAsync(cut.CashCutId, posSessionService.StoreName);
+            string html = CashCutReportBuilder.BuildHtml(report);
+            await IJSRuntime.InvokeVoidAsync("reportHelper.openAndPrint", html);
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source    ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "No se pudo generar el informe.", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loadingReportId = 0;
+        }
+    }
+
+    private static string BuildReportHtml(CashCutReportDTO r)
+    {
+        static string M(decimal v) => $"${v:N2}";
+        static string Esc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+
+        var sb = new StringBuilder();
+
+        string diffClass = r.Difference < 0 ? "neg" : r.Difference > 0 ? "pos" : "zero";
+        string diffSign  = r.Difference > 0 ? "+" : "";
+
+        // ── <head> ─────────────────────────────────────
+        sb.Append(@"<!DOCTYPE html>
+<html lang='es'>
+<head>
+<meta charset='UTF-8'>
+<title>Informe de Corte #").Append(r.CashCutId).Append(" — ").Append(Esc(r.StoreName)).Append(@"</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff;padding:24px 28px}
+h2{font-size:13px;font-weight:700;color:#1565c0;border-bottom:2px solid #1565c0;padding-bottom:4px;margin:22px 0 10px;text-transform:uppercase;letter-spacing:.5px}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:14px;border-bottom:3px solid #1565c0}
+.hdr-title{font-size:20px;font-weight:800;color:#1565c0;margin-bottom:4px}
+.hdr-meta{font-size:11px;color:#555;margin-top:3px}
+.hdr-right{text-align:right;font-size:11px;color:#777}
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.kpi{border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px}
+.kpi-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.4px}
+.kpi-value{font-size:18px;font-weight:700;margin-top:3px}
+.pos{color:#059669}.neg{color:#dc2626}.zero{color:#9ca3af}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px}
+th{background:#f3f4f6;padding:6px 10px;text-align:left;font-weight:600;border-bottom:2px solid #e0e0e0;font-size:10px;text-transform:uppercase;letter-spacing:.3px}
+td{padding:5px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.tr-last td{border-bottom:2px solid #e0e0e0;font-weight:700}
+.r{text-align:right}.c{text-align:center}
+.badge{padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600}
+.bin{background:#d1fae5;color:#065f46}.bout{background:#fee2e2;color:#991b1b}
+.bcredit{background:#ede9fe;color:#5b21b6}.bcash{background:#dbeafe;color:#1d4ed8}
+.notes{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:11px;margin-bottom:16px}
+.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e0e0e0;font-size:10px;color:#aaa;text-align:center}
+.no-print{text-align:center;margin-bottom:22px}
+.btn-p{background:#1565c0;color:#fff;border:none;padding:9px 26px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600}
+@media print{.no-print{display:none}body{padding:0}}
+</style></head><body>
+<div class='no-print'><button class='btn-p' onclick='window.print()'>&#128438; Imprimir / Guardar PDF</button></div>
+");
+
+        // ── Header ─────────────────────────────────────
+        sb.Append("<div class='hdr'><div><div class='hdr-title'>INFORME DE CORTE DE CAJA</div>");
+        sb.Append($"<div class='hdr-meta'>Sucursal: <strong>{Esc(r.StoreName)}</strong> &nbsp;·&nbsp; Operador: <strong>{Esc(r.OperatorName)}</strong></div>");
+        sb.Append($"<div class='hdr-meta'>Período: <strong>{r.OpenedAt:dd/MM/yyyy HH:mm}</strong> → <strong>{r.ClosedAt:dd/MM/yyyy HH:mm}</strong></div>");
+        sb.Append("</div>");
+        sb.Append($"<div class='hdr-right'>Generado el {r.GeneratedAt:dd/MM/yyyy HH:mm}<br>Corte N° {r.CashCutId}</div></div>");
+
+        // ── KPIs ───────────────────────────────────────
+        sb.Append("<h2>Resumen del cierre</h2><div class='kpi-row'>");
+        void Kpi(string label, string val, string cls = "") =>
+            sb.Append($"<div class='kpi'><div class='kpi-label'>{label}</div><div class='kpi-value {cls}'>{val}</div></div>");
+        Kpi("Fondo inicial",    M(r.OpeningAmount));
+        Kpi("Total recaudado", M(r.PaymentLines.Sum(l => l.Total)));
+        Kpi("Ventas",          r.TotalSales.ToString());
+        Kpi("Monto esperado",  M(r.ExpectedAmount));
+        Kpi("Monto contado",   M(r.ActualAmount));
+        Kpi("Diferencia",      $"{diffSign}{M(r.Difference)}", diffClass);
+        sb.Append("</div>");
+
+        // ── Profitability summary ───────────────────────
+        decimal revenue     = r.PaymentLines.Sum(l => l.Total);
+        decimal grossProfit = revenue - r.TotalCOGS;
+        decimal marginPct   = revenue > 0 ? Math.Round(grossProfit / revenue * 100, 1) : 0;
+        string  profClass   = grossProfit >= 0 ? "pos" : "neg";
+        string  marginColor = grossProfit >= 0 ? "#059669" : "#dc2626";
+
+        sb.Append("<h2>Rentabilidad del período</h2><div class='kpi-row'>");
+        Kpi("Ingresos (ventas)",    M(revenue));
+        Kpi("Costo de productos",  M(r.TotalCOGS));
+        Kpi("Ganancia bruta",      M(grossProfit), profClass);
+        Kpi("Margen bruto",        $"{marginPct}%", profClass);
+        sb.Append("</div>");
+
+        if (!string.IsNullOrWhiteSpace(r.Notes))
+            sb.Append($"<div class='notes'><strong>Notas:</strong> {Esc(r.Notes)}</div>");
+
+        // ── Payment breakdown ──────────────────────────
+        sb.Append("<h2>Recaudación por forma de pago</h2><table><thead><tr><th>Método</th><th class='c'>Efectivo</th><th class='c'>Transacciones</th><th class='r'>Total</th></tr></thead><tbody>");
+        foreach (var l in r.PaymentLines)
+            sb.Append($"<tr><td>{Esc(l.MethodName)}</td><td class='c'>{(l.IsCash ? "<span class='badge bcash'>Sí</span>" : "—")}</td><td class='c'>{l.Count}</td><td class='r'>{M(l.Total)}</td></tr>");
+        decimal pmTotal = r.PaymentLines.Sum(l => l.Total);
+        sb.Append($"<tr class='tr-last'><td colspan='2'></td><td class='c'>{r.PaymentLines.Sum(l => l.Count)}</td><td class='r'>{M(pmTotal)}</td></tr>");
+        sb.Append("</tbody></table>");
+
+        // ── Cash movements ─────────────────────────────
+        if (r.Movements.Any())
+        {
+            decimal movIn  = r.Movements.Where(m => m.Type == "IN").Sum(m => m.Amount);
+            decimal movOut = r.Movements.Where(m => m.Type == "OUT").Sum(m => m.Amount);
+            sb.Append($"<h2>Movimientos de efectivo ({r.Movements.Count})</h2><table><thead><tr><th>Tipo</th><th>Fecha y hora</th><th>Concepto</th><th>Operador</th><th class='r'>Importe</th></tr></thead><tbody>");
+            foreach (var m in r.Movements)
+            {
+                string badge = m.Type == "IN" ? "<span class='badge bin'>Entrada</span>" : "<span class='badge bout'>Salida</span>";
+                string sign  = m.Type == "IN" ? "+" : "−";
+                sb.Append($"<tr><td>{badge}</td><td>{m.Date:dd/MM/yyyy HH:mm}</td><td>{Esc(m.Reason)}</td><td>{Esc(m.Operator)}</td><td class='r'>{sign}{M(m.Amount)}</td></tr>");
+            }
+            sb.Append($"<tr class='tr-last'><td colspan='3'></td><td>Entradas: {M(movIn)} / Salidas: {M(movOut)}</td><td class='r'>{M(movIn - movOut)}</td></tr>");
+            sb.Append("</tbody></table>");
+        }
+
+        // ── Sales list ─────────────────────────────────
+        sb.Append($"<h2>Listado de ventas ({r.Sales.Count})</h2><table><thead><tr><th>Folio</th><th>Hora</th><th>Operador</th><th>Cliente</th><th>Método de pago</th><th class='r'>Total</th></tr></thead><tbody>");
+        foreach (var s in r.Sales)
+        {
+            string clientCell  = string.IsNullOrWhiteSpace(s.Client) ? "—" : Esc(s.Client);
+            string pmCell      = s.IsCredit ? $"<span class='badge bcredit'>Crédito</span>" : Esc(s.PaymentMethod);
+            sb.Append($"<tr><td>{Esc(s.Ticket)}</td><td>{s.Date:HH:mm}</td><td>{Esc(s.Operator)}</td><td>{clientCell}</td><td>{pmCell}</td><td class='r'>{M(s.Total)}</td></tr>");
+        }
+        sb.Append($"<tr class='tr-last'><td colspan='5'></td><td class='r'>{M(r.Sales.Sum(s => s.Total))}</td></tr>");
+        sb.Append("</tbody></table>");
+
+        // ── Products by category ────────────────────────
+        if (r.ProductsByCategory.Any())
+        {
+            int     totalLines = r.ProductsByCategory.Sum(g => g.Lines.Count);
+            decimal grandTotal = r.ProductsByCategory.Sum(g => g.Lines.Sum(l => l.TotalSubtotal));
+            sb.Append($"<h2>Productos vendidos ({totalLines} producto{(totalLines != 1 ? "s" : "")} en {r.ProductsByCategory.Count} categoría{(r.ProductsByCategory.Count != 1 ? "s" : "")})</h2>");
+
+            foreach (var group in r.ProductsByCategory)
+            {
+                decimal catTotal = group.Lines.Sum(l => l.TotalSubtotal);
+
+                // Header: nombre a la izquierda, badges de método de pago a la derecha
+                sb.Append("<div style='font-size:11px;font-weight:700;color:#1565c0;background:#eff6ff;padding:5px 10px;border-left:3px solid #1565c0;margin-bottom:2px;margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;'>");
+                sb.Append($"<span>{Esc(group.CategoryName)}</span>");
+                if (group.PaymentBreakdown.Any())
+                {
+                    sb.Append("<span style='display:flex;gap:4px;flex-wrap:wrap;'>");
+                    foreach (var pm in group.PaymentBreakdown)
+                        sb.Append($"<span style='font-size:10px;font-weight:500;background:#fff;border:1px solid #93c5fd;border-radius:3px;padding:1px 6px;color:#1e40af;'>{Esc(pm.MethodName)}: {M(pm.Subtotal)}</span>");
+                    sb.Append("</span>");
+                }
+                sb.Append("</div>");
+
+                sb.Append("<table><thead><tr><th>Producto</th><th class='r'>Cantidad</th><th class='r'>Importe total</th></tr></thead><tbody>");
+                foreach (var line in group.Lines)
+                    sb.Append($"<tr><td>{Esc(line.ProductName)}</td><td class='r'>{line.TotalQty:N2}</td><td class='r'>{M(line.TotalSubtotal)}</td></tr>");
+                sb.Append($"<tr class='tr-last'><td><em>Subtotal {Esc(group.CategoryName)}</em></td><td></td><td class='r'>{M(catTotal)}</td></tr>");
+                sb.Append("</tbody></table>");
+            }
+
+            sb.Append($"<div style='text-align:right;font-size:12px;font-weight:700;padding:6px 10px;border-top:2px solid #1565c0;margin-top:4px'>Total general de productos: {M(grandTotal)}</div>");
+        }
+
+        // ── Returns ────────────────────────────────────
+        if (r.Returns.Any())
+        {
+            sb.Append($"<h2>Devoluciones ({r.Returns.Count})</h2><table><thead><tr><th>Ticket original</th><th>Fecha y hora</th><th>Motivo</th><th>Operador</th><th class='r'>Importe devuelto</th></tr></thead><tbody>");
+            foreach (var ret in r.Returns)
+                sb.Append($"<tr><td>{Esc(ret.OriginalTicket)}</td><td>{ret.Date:dd/MM/yyyy HH:mm}</td><td>{Esc(ret.Reason)}</td><td>{Esc(ret.Operator)}</td><td class='r'>{M(ret.Amount)}</td></tr>");
+            sb.Append($"<tr class='tr-last'><td colspan='4'></td><td class='r'>{M(r.Returns.Sum(x => x.Amount))}</td></tr>");
+            sb.Append("</tbody></table>");
+        }
+
+        // ── Credits ────────────────────────────────────
+        if (r.Credits.Any())
+        {
+            sb.Append($"<h2>Créditos generados ({r.Credits.Count})</h2><table><thead><tr><th>Cliente</th><th>Fecha</th><th class='r'>Importe original</th><th class='r'>Saldo pendiente</th></tr></thead><tbody>");
+            foreach (var cr in r.Credits)
+                sb.Append($"<tr><td>{Esc(cr.Client)}</td><td>{cr.Date:dd/MM/yyyy HH:mm}</td><td class='r'>{M(cr.Original)}</td><td class='r'>{M(cr.Balance)}</td></tr>");
+            sb.Append("</tbody></table>");
+        }
+
+        // ── Purchases ──────────────────────────────────
+        if (r.Purchases.Any())
+        {
+            decimal purchTotal     = r.Purchases.Sum(p => p.Total);
+            int     confirmed      = r.Purchases.Count(p => p.IsConfirmed);
+            int     pending        = r.Purchases.Count - confirmed;
+            sb.Append($"<h2>Compras a proveedores ({r.Purchases.Count})</h2>");
+            sb.Append("<table><thead><tr><th>Fecha</th><th>Proveedor</th><th>N° factura</th><th class='c'>Productos</th><th class='r'>Subtotal</th><th class='r'>IVA</th><th class='r'>Total</th><th class='c'>Estado</th></tr></thead><tbody>");
+            foreach (var p in r.Purchases)
+            {
+                string statusBadge = p.IsConfirmed
+                    ? "<span class='badge bin'>Confirmada</span>"
+                    : "<span class='badge bout'>Pendiente</span>";
+                sb.Append($"<tr><td>{p.Date:dd/MM/yyyy}</td><td>{Esc(p.SupplierName)}</td><td>{Esc(p.Invoice ?? "—")}</td><td class='c'>{p.ItemCount}</td><td class='r'>{M(p.Subtotal)}</td><td class='r'>{M(p.TaxAmount)}</td><td class='r'>{M(p.Total)}</td><td class='c'>{statusBadge}</td></tr>");
+            }
+            sb.Append($"<tr class='tr-last'><td colspan='4'>{confirmed} confirmada{(confirmed != 1 ? "s" : "")} · {pending} pendiente{(pending != 1 ? "s" : "")}</td><td colspan='2'></td><td class='r'>{M(purchTotal)}</td><td></td></tr>");
+            sb.Append("</tbody></table>");
+        }
+
+        // ── Footer ─────────────────────────────────────
+        sb.Append($"<div class='footer'>FiyiPOS &nbsp;·&nbsp; Informe generado el {r.GeneratedAt:dd/MM/yyyy} a las {r.GeneratedAt:HH:mm}</div>");
+        sb.Append("<div class='no-print' style='margin-top:20px'><button class='btn-p' onclick='window.print()'>&#128438; Imprimir / Guardar PDF</button></div>");
+        sb.Append("</body></html>");
+
+        return sb.ToString();
+    }
+
+    private static string GetPaymentIcon(string name) => name.ToLower() switch
+    {
+        var n when n.Contains("efectivo")  => "fa-money-bill-wave",
+        var n when n.Contains("tarjeta")   => "fa-credit-card",
+        var n when n.Contains("transfer")  => "fa-exchange-alt",
+        var n when n.Contains("vale")      => "fa-ticket-alt",
+        _                                  => "fa-coins"
+    };
+}

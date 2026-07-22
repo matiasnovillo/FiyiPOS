@@ -1,0 +1,680 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.ClientBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ClientBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+@using System.Text.RegularExpressions
+
+@inject IJSRuntime                  JS
+@inject ClientRepository            clientRepository
+@inject CreditRepository            creditRepository
+@inject PosSessionService           posSessionService
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">ADMINISTRACIÓN DE CLIENTES</div>
+    <div class="header-sub">Administra clientes para crédito, facturación y seguimiento de deuda de forma centralizada.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de clientes</div>
+        <div class="stat-value">@_totalRecordsInDb</div>
+    </div>
+    <div class="stat-card c-primary">
+        <div class="stat-label">Clientes con crédito</div>
+        <div class="stat-value">@_totalWithCredit</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Clientes deudores</div>
+        <div class="stat-value">@DeudoresCount</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nombre, correo o teléfono..."
+               @bind="_searchText" @oninput="OnSearchInput" />
+    </div>
+    <button class="abtn abtn-primary" @onclick="OpenNewModal">
+        <i class="fas fa-user-plus"></i> Nuevo Cliente
+    </button>
+</div>
+
+<!-- ── FILTER CHIPS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(_soloDeudores ? "active" : "")"
+            @onclick="ToggleSoloDeudores">
+        <i class="fas fa-exclamation-circle"></i> Solo deudores
+        <span>(@DeudoresCount)</span>
+    </button>
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando clientes...</p>
+        </div>
+    }
+    else if (!_pageClients.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-users-slash"></i>
+            <p>No hay clientes registrados</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Cliente</th>
+                    <th>Correo</th>
+                    <th>Teléfono</th>
+                    <th>Crédito</th>
+                    <th>Deuda abierta</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _pageClients)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:@GetAvatarColor(c.ClientId);">
+                                    @GetInitials(c)
+                                </div>
+                                <div>
+                                    <div class="entity-link fs-6" @onclick="() => OpenEditModal(c)">@c.Nombres @c.Apellidos</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">@c.Correo</td>
+                        <td class="fs-6">
+                            @(string.IsNullOrWhiteSpace(c.Telefono) ? "—" : c.Telefono)
+                        </td>
+                        <td>
+                            @if (c.TieneCreditoAutorizado)
+                            {
+                                <span class="credit-badge credit-yes fs-6">
+                                    <i class="fas fa-handshake me-1"></i>Autorizado
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="credit-badge credit-no fs-6">Sin crédito</span>
+                            }
+                        </td>
+                        <td>
+                            @{var debt = GetBalance(c.ClientId);}
+                            @if (debt > 0)
+                            {
+                                <span class="debt-cell debt-owed fs-6">
+                                    $@debt.ToString("N2")
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="debt-cell debt-clear fs-6">—</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenEditModal(c)">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="abtn abtn-danger" @onclick="() => ShowDeleteModal(c)">
+                                <i class="fas fa-trash-alt"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_totalRecordsInDb > 0)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+
+        @for (int p = winStart; p <= winEnd; p++)
+        {
+            int pg = p;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+
+<!-- ── MODAL: Nuevo / Editar cliente ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel">
+
+            <div class="panel-header">
+                <span>
+                    <i class="fas @(_editingId == null ? "fa-user-plus" : "fa-user-edit") me-2"></i>
+                    @(_editingId == null ? "Nuevo cliente" : "Editar cliente")
+                </span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-grid">
+
+                    <div class="field">
+                        <label>Nombres <span class="required-star">*</span></label>
+                        <input type="text" @bind="_form.Nombres"
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Nombres) ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field">
+                        <label>Apellidos <span class="required-star">*</span></label>
+                        <input type="text" @bind="_form.Apellidos"
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Apellidos) ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field">
+                        <label>Correo electrónico <span class="required-star">*</span></label>
+                        <input type="email" @bind="_form.Correo"
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Correo) ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field">
+                        <label>Teléfono</label>
+                        <input type="text" @bind="_form.Telefono" />
+                    </div>
+
+                    <div class="field">
+                        <label>Domicilio</label>
+                        <input type="text" @bind="_form.Domicilio" />
+                    </div>
+
+                    <div class="field">
+                        <label>CUIT</label>
+                        <input type="text" @bind="_form.CUIT" />
+                    </div>
+
+                </div>
+
+                <div class="field field-full">
+                    <label>Notas / Comentarios</label>
+                    <textarea @bind="_form.Notas" rows="3"></textarea>
+                </div>
+
+                <div class="panel-grid">
+
+                    <div class="field field-full">
+                        <label class="check-label">
+                            <input type="checkbox" @bind="_form.TieneCreditoAutorizado" />
+                            <span class="text-uppercase">Tiene crédito autorizado</span>
+                        </label>
+                    </div>
+
+                    <div class="field field-full">
+                        <label>Límite de crédito (0 = sin límite)</label>
+                        <input type="number" min="0" step="0.01" @bind="_form.LimiteCredito" />
+                    </div>
+
+                    @if (_editingId != null)
+                    {
+                        <div class="field field-full">
+                            <label>Deuda abierta</label>
+                            @if (_loadingBalance)
+                            {
+                                <span class="readonly-val"><i class="fas fa-spinner fa-spin"></i></span>
+                            }
+                            else
+                            {
+                                <span class="readonly-val @(_realOpenBalance > 0 ? "balance-owed" : "") fw-bold">
+                                    $@_realOpenBalance.ToString("N2")
+                                    @if (_realOpenBalance > 0)
+                                    {
+                                        <span> — pendiente de cobro</span>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    }
+
+                </div>
+
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="SaveCliente" disabled="@_saving">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Confirmar eliminación ── -->
+@if (_showDeleteModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:420px;">
+            <div class="panel-header">
+                <span><i class="fas fa-trash-alt me-2"></i>Confirmar eliminación</span>
+                <button class="panel-close fs-3" @onclick="() => _showDeleteModal = false">×</button>
+            </div>
+            <div class="panel-body">
+                <p class="fs-6 text-nowrap">¿Eliminar al cliente <strong class="fs-6">@_selected?.Nombres @_selected?.Apellidos</strong>?</p>
+                <p class="fs-6" style="color:var(--pos-danger)">Esta acción no se puede deshacer <i class="fas fa-exclamation-triangle"></i></p>
+            </div>
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDeleteModal = false">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmDelete">
+                    <i class="fas fa-trash-alt"></i> Sí, eliminar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool    _loading         = true;
+    private bool    _showModal       = false;
+    private bool    _showDeleteModal = false;
+    private bool    _showValidation  = false;
+    private bool    _saving          = false;
+    private bool    _loadingBalance  = false;
+    private bool    _soloDeudores    = false;
+    private long?   _editingId       = null;
+    private decimal _realOpenBalance = 0;
+    private string  _searchText      = "";
+    private string  _modalError      = "";
+
+    private Dictionary<long, decimal> _balances = new();
+
+    private List<Client> _pageClients        = new();
+    private long         _totalRecordsInDb   = 0;
+    private int          _totalWithCredit    = 0;
+    private int          _pageIndex          = 1;
+    private const int    _pageSize           = 10;
+    private int          _totalPages         = 1;
+
+    private Client?      _selected;
+    private ClientFormVM _form = new();
+
+    private static readonly string[] _avatarColors =
+    [
+        "#3d5166", "#5b6abf", "#0f766e", "#b45309",
+        "#7c3aed", "#0369a1", "#be185d", "#15803d"
+    ];
+
+    private CancellationTokenSource cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClientes();
+    }
+
+    private async Task LoadClientes()
+    {
+        _loading = true;
+        try
+        {
+            var credits = await creditRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            _balances = credits
+                .GroupBy(c => c.ClientId)
+                .ToDictionary(g => g.Key, g => g.Sum(c => c.Balance));
+
+            _totalWithCredit = await clientRepository.CountWithCreditByStoreIdAsync(posSessionService.StoreId);
+
+            await LoadPage();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadPage()
+    {
+        List<long>? debtorIds = _soloDeudores
+            ? _balances.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToList()
+            : null;
+
+        var result = await clientRepository.GetAllPaginatedByStoreIdAsync(
+            posSessionService.StoreId,
+            _searchText,
+            _pageIndex,
+            _pageSize,
+            debtorIds);
+
+        _pageClients           = result.ListClient;
+        _totalRecordsInDb      = result.TotalRecordsInDatabase;
+        _totalPages            = result.TotalPages;
+
+        if (_pageClients.Count == 0 && _pageIndex > 1)
+        {
+            _pageIndex = Math.Max(1, _totalPages);
+            await LoadPage();
+        }
+    }
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        await LoadPage();
+    }
+
+    private async void OnSearchInput(ChangeEventArgs e)
+    {
+        cts.Cancel();
+        cts = new();
+
+        try
+        {
+            await Task.Delay(300, cts.Token);
+
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex = 1;
+            await LoadPage();
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+            //User still writing, do nothing and wait for the next event to trigger
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Error", "Error al buscar clientes", "error");
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private decimal GetBalance(long clientId) =>
+        _balances.TryGetValue(clientId, out var b) ? b : 0m;
+
+    private int DeudoresCount => _balances.Count(kv => kv.Value > 0);
+
+    private async Task ToggleSoloDeudores()
+    {
+        _soloDeudores = !_soloDeudores;
+        _pageIndex    = 1;
+        await LoadPage();
+    }
+
+    private void OpenNewModal()
+    {
+        _editingId      = null;
+        _selected       = null;
+        _form           = new ClientFormVM();
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+    }
+
+    private void OpenEditModal(Client c)
+    {
+        _editingId       = c.ClientId;
+        _selected        = c;
+        _realOpenBalance = 0;
+        _form = new ClientFormVM
+        {
+            Nombres                = c.Nombres,
+            Apellidos              = c.Apellidos,
+            Telefono               = c.Telefono,
+            Correo                 = c.Correo,
+            Domicilio              = c.Domicilio,
+            CUIT                   = c.CUIT,
+            Notas                  = c.Notas,
+            TieneCreditoAutorizado = c.TieneCreditoAutorizado,
+            LimiteCredito          = c.LimiteCredito,
+        };
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+        _ = LoadOpenBalanceAsync(c.ClientId);
+    }
+
+    private void CloseModal()
+    {
+        _showModal  = false;
+        _modalError = "";
+    }
+
+    private async Task LoadOpenBalanceAsync(long clientId)
+    {
+        _loadingBalance  = true;
+        _realOpenBalance = await creditRepository.GetOpenBalanceByClientIdAsync(clientId);
+        _loadingBalance  = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveCliente()
+    {
+        _showValidation = true;
+        _modalError     = "";
+
+        if (string.IsNullOrWhiteSpace(_form.Nombres) ||
+            string.IsNullOrWhiteSpace(_form.Apellidos) ||
+            string.IsNullOrWhiteSpace(_form.Correo))
+        {
+            _modalError = "Completa los campos requeridos.";
+            return;
+        }
+
+        var allClients = await clientRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        bool correoRepetido = _editingId == null
+            ? allClients.Any(c => c.Correo.Equals(_form.Correo.Trim(), StringComparison.OrdinalIgnoreCase))
+            : allClients.Any(c => c.ClientId != _editingId &&
+                                  c.Correo.Equals(_form.Correo.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (correoRepetido)
+        {
+            _modalError = "Ya existe un cliente con ese correo electrónico.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            if (_editingId == null)
+            {
+                var nuevo = new Client
+                {
+                    StoreId                  = posSessionService.StoreId,
+                    DateTimeCreation         = DateTime.Now,
+                    DateTimeLastModification = DateTime.Now,
+                    UserCreationId           = posSessionService.SystemUserId,
+                    UserLastModificationId   = posSessionService.SystemUserId,
+                    Active                   = true,
+                    Nombres                  = _form.Nombres.Trim(),
+                    Apellidos                = _form.Apellidos.Trim(),
+                    Telefono                 = _form.Telefono.Trim(),
+                    Correo                   = _form.Correo.Trim(),
+                    Domicilio                = _form.Domicilio.Trim(),
+                    CUIT                     = _form.CUIT.Trim(),
+                    Notas                    = _form.Notas.Trim(),
+                    TieneCreditoAutorizado   = _form.TieneCreditoAutorizado,
+                    LimiteCredito            = _form.LimiteCredito,
+                };
+                await clientRepository.AddAsync(nuevo);
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Cliente agregado correctamente.", "success");
+            }
+            else
+            {
+                _selected!.DateTimeLastModification = DateTime.Now;
+                _selected.UserLastModificationId    = posSessionService.SystemUserId;
+                _selected.Nombres                   = _form.Nombres.Trim();
+                _selected.Apellidos                 = _form.Apellidos.Trim();
+                _selected.Telefono                  = _form.Telefono.Trim();
+                _selected.Correo                    = _form.Correo.Trim();
+                _selected.Domicilio                 = _form.Domicilio.Trim();
+                _selected.CUIT                      = _form.CUIT.Trim();
+                _selected.Notas                     = _form.Notas.Trim();
+                _selected.TieneCreditoAutorizado    = _form.TieneCreditoAutorizado;
+                _selected.LimiteCredito             = _form.LimiteCredito;
+                await clientRepository.UpdateAsync(_selected);
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Cliente actualizado correctamente.", "success");
+            }
+
+            _showModal = false;
+            await LoadClientes();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+
+    private void ShowDeleteModal(Client c)
+    {
+        _selected        = c;
+        _showDeleteModal = true;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        _showDeleteModal = false;
+        if (_selected == null) return;
+        try
+        {
+            await clientRepository.DeleteOneByClientIdAsync(_selected.ClientId);
+            _selected = null;
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", "Cliente eliminado correctamente.", "success");
+            await LoadClientes();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+    }
+
+    private static string GetInitials(Client c)
+    {
+        char n = c.Nombres.Length   > 0 ? c.Nombres[0]   : ' ';
+        char a = c.Apellidos.Length > 0 ? c.Apellidos[0] : ' ';
+        return $"{n}{a}".ToUpper();
+    }
+
+    private static string GetAvatarColor(long id) =>
+        _avatarColors[id % _avatarColors.Length];
+
+    private class ClientFormVM
+    {
+        public string  Nombres                { get; set; } = "";
+        public string  Apellidos              { get; set; } = "";
+        public string  Telefono               { get; set; } = "";
+        public string  Correo                 { get; set; } = "";
+        public string  Domicilio              { get; set; } = "";
+        public string  CUIT                   { get; set; } = "";
+        public string  Notas                  { get; set; } = "";
+        public bool    TieneCreditoAutorizado { get; set; }
+        public decimal LimiteCredito          { get; set; }
+    }
+}

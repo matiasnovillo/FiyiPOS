@@ -1,0 +1,699 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.CompanySettingsBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CompanySettingsBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Services.AFIP
+
+@inject ConfigRepository configRepository
+@inject CompanySettingsRepository companySettingsRepository
+@inject AfipCertificateProtectionService certificateProtection
+@inject PosSessionService posSessionService
+@inject IJSRuntime JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">CONFIGURACIÓN DEL SISTEMA</div>
+    <div class="header-sub">Parámetros globales del POS</div>
+</div>
+
+<!-- ── BODY ── -->
+<div class="config-body">
+
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando configuración...</p>
+        </div>
+    }
+    else
+    {
+        @foreach (var sectionName in _sections)
+        {
+            var items = _configs.Where(c => GetMeta(c.ConfigKey).Section == sectionName).ToList();
+            if (!items.Any()) continue;
+
+            <div class="config-card">
+                <div class="config-card-title fs-6">
+                    <i class="fas @GetSectionIcon(sectionName) me-2"></i>@sectionName
+                </div>
+
+                <div class="config-rows">
+                    @foreach (var cfg in items)
+                    {
+                        var meta = GetMeta(cfg.ConfigKey);
+                        <div class="config-row @(cfg.IsDirty ? "config-row-dirty" : "")">
+                            <div class="config-row-label">
+                                <span class="config-key-label fs-6">@meta.Label</span>
+                                @if (!string.IsNullOrWhiteSpace(cfg.Description))
+                                {
+                                    <span class="config-key-desc fs-6">@cfg.Description</span>
+                                }
+                            </div>
+                            <div class="config-row-input">
+                                @if (meta.InputType == "toggle")
+                                {
+                                    <label class="config-toggle fs-6">
+                                        <input type="checkbox"
+                                               checked="@GetToggleChecked(cfg)"
+                                               @onchange="e => SetToggleValue(cfg, e)" />
+                                        <span class="config-toggle-slider"></span>
+                                    </label>
+                                    <span class="config-toggle-label fs-6">@(GetToggleChecked(cfg) ? "Activado" : "Desactivado")</span>
+                                }
+                                else if (meta.InputType == "number")
+                                {
+                                    <input type="number"
+                                           class="config-input fs-6"
+                                           min="0" step="@(cfg.ConfigKey == "default_tax_rate" ? "0.01" : "1")"
+                                           value="@cfg.Value"
+                                           @oninput="e => cfg.Value = e.Value?.ToString() ?? cfg.Value" />
+                                }
+                                else
+                                {
+                                    <input type="text"
+                                           class="config-input fs-6"
+                                           value="@cfg.Value"
+                                           @oninput="e => cfg.Value = e.Value?.ToString() ?? cfg.Value" />
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    @* ── Facturación Electrónica AFIP ── *@
+    <div class="config-card">
+        <div class="config-card-title fs-6">
+            <i class="fas fa-file-invoice me-2"></i>Facturación Electrónica AFIP
+        </div>
+
+        @if (_invoicingLoading)
+        {
+            <div class="empty-state py-3">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p class="fs-6 mb-0">Cargando configuración fiscal...</p>
+            </div>
+        }
+        else
+        {
+            <div class="config-rows">
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Facturación habilitada</span>
+                        <span class="config-key-desc fs-6">Emitir comprobante fiscal al confirmar venta</span>
+                    </div>
+                    <div class="config-row-input">
+                        <label class="config-toggle fs-6">
+                            <input type="checkbox" @bind="_invoicingModel.FacturacionHabilitada" />
+                            <span class="config-toggle-slider"></span>
+                        </label>
+                        <span class="config-toggle-label fs-6">@(_invoicingModel.FacturacionHabilitada ? "Activado" : "Desactivado")</span>
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Nombre de la empresa</span>
+                    </div>
+                    <div class="config-row-input">
+                        <input type="text" class="config-input fs-6" @bind="_invoicingModel.NombreEmpresa" />
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Razón social</span>
+                    </div>
+                    <div class="config-row-input">
+                        <input type="text" class="config-input fs-6" @bind="_invoicingModel.RazonSocial" />
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">CUIT</span>
+                        @if (_invoicingModel.Ambiente == "Homologacion")
+                        {
+                            <span class="config-key-desc fs-6">Opcional para ticket de prueba. Obligatorio si cargás certificado.</span>
+                        }
+                    </div>
+                    <div class="config-row-input">
+                        <input type="text" class="config-input fs-6" maxlength="13" @bind="_invoicingModel.Cuit" placeholder="20-12345678-9" />
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Dirección</span>
+                        <span class="config-key-desc fs-6">Se imprime en el membrete del ticket (opcional)</span>
+                    </div>
+                    <div class="config-row-input">
+                        <input type="text" class="config-input fs-6" maxlength="300" @bind="_invoicingModel.Address" placeholder="Av. Siempre Viva 742" />
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Teléfono</span>
+                        <span class="config-key-desc fs-6">Se imprime en el membrete del ticket (opcional)</span>
+                    </div>
+                    <div class="config-row-input">
+                        <input type="text" class="config-input fs-6" maxlength="50" @bind="_invoicingModel.Phone" placeholder="0351 123-4567" />
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Condición fiscal</span>
+                    </div>
+                    <div class="config-row-input">
+                        <select class="config-input fs-6" @bind="_invoicingModel.CondicionIVA">
+                            <option value="Responsable Inscripto">Responsable Inscripto</option>
+                            <option value="Monotributista">Monotributista</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Punto de venta</span>
+                    </div>
+                    <div class="config-row-input">
+                        <input type="number" class="config-input fs-6" min="1" max="99999" @bind="_invoicingModel.PuntoVenta" />
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Ambiente AFIP</span>
+                        @if (_invoicingModel.Ambiente == "Homologacion")
+                        {
+                            <span class="config-key-desc fs-6">En homologación sin certificado se genera un ticket de prueba local (no llama a AFIP).</span>
+                        }
+                    </div>
+                    <div class="config-row-input">
+                        <select class="config-input fs-6" @bind="_invoicingModel.Ambiente">
+                            <option value="Homologacion">Homologación (ticket de prueba)</option>
+                            <option value="Produccion">Producción</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Certificado digital (.pfx)</span>
+                        <span class="config-key-desc fs-6">
+                            @if (_invoicingModel.Ambiente == "Homologacion")
+                            {
+                                @:Opcional en homologación. Solo necesario si querés probar contra AFIP real.
+                            }
+                            else
+                            {
+                                @:Obligatorio en producción. Máximo 512 KB.
+                            }
+                        </span>
+                    </div>
+                    <div class="config-row-input" style="flex-direction:column;align-items:flex-start;gap:.5rem;">
+                        <InputFile OnChange="OnCertificateSelected" accept=".pfx" class="fs-6" />
+                        @if (_hasCertificate)
+                        {
+                            <span class="fs-6 text-success"><i class="fas fa-check-circle me-1"></i>Certificado cargado</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-row-label">
+                        <span class="config-key-label fs-6">Contraseña del certificado</span>
+                    </div>
+                    <div class="config-row-input">
+                        <input type="password" class="config-input fs-6" @bind="_certPassword"
+                               placeholder="@(_hasCertificate ? "Dejar vacío para mantener la actual" : "Contraseña del .pfx")" />
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_certSujeto) || _certVencimiento.HasValue)
+                {
+                    <div class="config-row">
+                        <div class="config-row-label">
+                            <span class="config-key-label fs-6">Datos del certificado</span>
+                        </div>
+                        <div class="config-row-input" style="flex-direction:column;align-items:flex-start;">
+                            @if (!string.IsNullOrEmpty(_certSujeto))
+                            {
+                                <span class="fs-6"><strong>Sujeto:</strong> @_certSujeto</span>
+                            }
+                            @if (!string.IsNullOrEmpty(_certEmisor))
+                            {
+                                <span class="fs-6"><strong>Emisor:</strong> @_certEmisor</span>
+                            }
+                            @if (_certVencimiento.HasValue)
+                            {
+                                <span class="fs-6 @(_certVencimiento < DateTime.Now ? "text-danger" : "")">
+                                    <strong>Vencimiento:</strong> @_certVencimiento.Value.ToString("dd/MM/yyyy")
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="config-actions" style="border-top:none;padding-top:0;">
+                <button class="abtn abtn-sky" @onclick="ValidateCertificateAsync" disabled="@_saving">
+                    <i class="fas fa-shield-alt"></i> Validar certificado
+                </button>
+            </div>
+        }
+    </div>
+
+    @* ── Botón unificado ── *@
+    <div class="config-actions">
+        @if (_dirtyCount > 0)
+        {
+            <span class="config-dirty-hint">
+                <i class="fas fa-circle" style="font-size:.5rem;color:#f59e0b;"></i>
+                @_dirtyCount @(_dirtyCount == 1 ? "cambio sin guardar" : "cambios sin guardar")
+            </span>
+        }
+        <button class="abtn abtn-sky" @onclick="ResetChanges" disabled="@(_saving || (_dirtyCount == 0 && !_invoicingIsDirty))">
+            <i class="fas fa-undo"></i> Descartar
+        </button>
+        <button class="abtn abtn-primary" @onclick="SaveAllAsync" disabled="@_saving">
+            <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check-double")"></i>
+            @(_saving ? "Guardando..." : "Guardar todo")
+        </button>
+    </div>
+
+</div>
+
+@code {
+
+    // ── POS config ─────────────────────────────────────
+    private bool _loading = true;
+    private bool _saving  = false;
+    private List<ConfigVM> _configs = new();
+
+    private int _dirtyCount => _configs.Count(c => c.IsDirty);
+
+    private static readonly string[] _sections = ["Ventas", "Ticket / Folio", "Notificaciones"];
+
+    private static readonly Dictionary<string, (string Label, string Section, string InputType)> _meta = new()
+    {
+        ["default_tax_rate"]      = ("Tasa de impuesto por defecto (%)",             "Ventas",         "number"),
+        ["allow_negative_stock"]  = ("Bloquear venta si el stock es insuficiente",   "Ventas",         "toggle"),
+        ["require_customer_sale"] = ("Requerir cliente para cobrar",                 "Ventas",         "toggle"),
+        ["ticket_footer"]         = ("Texto al pie del ticket",                      "Ticket / Folio", "text"),
+        ["folio_prefix"]          = ("Prefijo del folio",                            "Ticket / Folio", "text"),
+        ["folio_padding"]         = ("Longitud numérica del folio",                  "Ticket / Folio", "number"),
+        ["send_email_to_cashier_when_araise_low_stock"]                           = ("Notificar cajeros por stock bajo",           "Notificaciones", "toggle"),
+        ["send_email_to_supervisor_when_araise_low_stock"]                        = ("Notificar supervisores por stock bajo",      "Notificaciones", "toggle"),
+        ["send_email_to_admin_when_araise_low_stock"]                             = ("Notificar admins por stock bajo",            "Notificaciones", "toggle"),
+        ["send_email_to_admin_and_supervisor_when_a_cash_cut_is_not_exact_block"] = ("Notificar por diferencia en corte de caja",  "Notificaciones", "toggle"),
+    };
+
+    private static readonly HashSet<string> _invertedToggles = new() { "allow_negative_stock" };
+
+    private static (string Label, string Section, string InputType) GetMeta(string key) =>
+        _meta.TryGetValue(key, out var m) ? m : (key, "Otros", "text");
+
+    private static bool GetToggleChecked(ConfigVM cfg) =>
+        _invertedToggles.Contains(cfg.ConfigKey) ? cfg.Value == "0" : cfg.Value == "1";
+
+    private static void SetToggleValue(ConfigVM cfg, ChangeEventArgs e)
+    {
+        bool isChecked = (bool?)e.Value == true;
+        bool inverted  = _invertedToggles.Contains(cfg.ConfigKey);
+        cfg.Value = (inverted ? !isChecked : isChecked) ? "1" : "0";
+    }
+
+    private static string GetSectionIcon(string section) => section switch
+    {
+        "Ventas"          => "fa-shopping-cart",
+        "Ticket / Folio"  => "fa-receipt",
+        "Notificaciones"  => "fa-bell",
+        _                 => "fa-cog"
+    };
+
+    // ── Invoicing ──────────────────────────────────────
+    private bool      _invoicingLoading = true;
+    private bool      _hasCertificate;
+    private string    _certPassword = "";
+    private byte[]?   _pendingPfx;
+    private string?   _certSujeto;
+    private string?   _certEmisor;
+    private DateTime? _certVencimiento;
+    private string?   _existingProtectedPassword;
+
+    private FacturacionFormModel _invoicingModel    = new();
+    private FacturacionFormModel _invoicingSnapshot = new();
+    private bool      _hasCertificateSnapshot;
+    private string?   _certSujetoSnapshot;
+    private string?   _certEmisorSnapshot;
+    private DateTime? _certVencimientoSnapshot;
+
+    private bool _invoicingIsDirty =>
+        !_invoicingLoading && (
+            _pendingPfx is not null                                                           ||
+            !string.IsNullOrEmpty(_certPassword)                                              ||
+            _invoicingModel.FacturacionHabilitada != _invoicingSnapshot.FacturacionHabilitada ||
+            _invoicingModel.NombreEmpresa         != _invoicingSnapshot.NombreEmpresa         ||
+            _invoicingModel.RazonSocial           != _invoicingSnapshot.RazonSocial           ||
+            _invoicingModel.Cuit                  != _invoicingSnapshot.Cuit                  ||
+            _invoicingModel.Address               != _invoicingSnapshot.Address               ||
+            _invoicingModel.Phone                 != _invoicingSnapshot.Phone                 ||
+            _invoicingModel.CondicionIVA          != _invoicingSnapshot.CondicionIVA          ||
+            _invoicingModel.PuntoVenta            != _invoicingSnapshot.PuntoVenta            ||
+            _invoicingModel.Ambiente              != _invoicingSnapshot.Ambiente
+        );
+
+    // ── Lifecycle ──────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadAsync(), LoadInvoicingAsync());
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var raw = await configRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        _configs = raw.Select(c => new ConfigVM(c)).ToList();
+
+        await SeedMissingKeysAsync();
+
+        _loading = false;
+    }
+
+    // Inserta en la BD las claves de _meta que aún no existen para esta sucursal.
+    // Necesario cuando se agrega una clave nueva y la sucursal ya existía.
+    private async Task SeedMissingKeysAsync()
+    {
+        var existing = _configs.Select(c => c.ConfigKey).ToHashSet();
+        var missing  = _meta.Where(kv => !existing.Contains(kv.Key)).ToList();
+        if (missing.Count == 0) return;
+
+        var toInsert = missing.Select(kv => new Config
+        {
+            StoreId   = posSessionService.StoreId,
+            ConfigKey = kv.Key,
+            Value     = kv.Value.InputType == "text" ? "" : "0",
+        }).ToList();
+
+        try
+        {
+            await configRepository.AddRangeAsync(toInsert);
+        }
+        catch { /* Race condition: otra sesión lo sembró antes, ignorar. */ }
+
+        // Recargar para que los VM nuevos queden disponibles
+        var raw = await configRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        _configs = raw.Select(c => new ConfigVM(c)).ToList();
+    }
+
+    private async Task LoadInvoicingAsync()
+    {
+        _invoicingLoading = true;
+        var cfg = await companySettingsRepository.GetByStoreIdAsync(posSessionService.StoreId);
+        if (cfg is not null)
+        {
+            _invoicingModel = new FacturacionFormModel
+            {
+                FacturacionHabilitada = cfg.InvoicingEnabled,
+                NombreEmpresa         = cfg.CompanyName,
+                RazonSocial           = cfg.LegalName,
+                Cuit                  = cfg.TaxId,
+                Address               = cfg.Address,
+                Phone                 = cfg.Phone,
+                CondicionIVA          = cfg.TaxCondition,
+                PuntoVenta            = cfg.PointOfSale,
+                Ambiente              = cfg.Environment
+            };
+            _hasCertificate            = cfg.CertificatePfx is { Length: > 0 };
+            _certSujeto                = cfg.CertificateSubject;
+            _certEmisor                = cfg.CertificateIssuer;
+            _certVencimiento           = cfg.ExpirationDate;
+            _existingProtectedPassword = cfg.CertificatePassword;
+        }
+        CommitInvoicingSnapshot();
+        _invoicingLoading = false;
+    }
+
+    // ── POS config actions ─────────────────────────────
+    private void ResetChanges()
+    {
+        foreach (var c in _configs) c.Reset();
+
+        _invoicingModel = new FacturacionFormModel
+        {
+            FacturacionHabilitada = _invoicingSnapshot.FacturacionHabilitada,
+            NombreEmpresa         = _invoicingSnapshot.NombreEmpresa,
+            RazonSocial           = _invoicingSnapshot.RazonSocial,
+            Cuit                  = _invoicingSnapshot.Cuit,
+            Address               = _invoicingSnapshot.Address,
+            Phone                 = _invoicingSnapshot.Phone,
+            CondicionIVA          = _invoicingSnapshot.CondicionIVA,
+            PuntoVenta            = _invoicingSnapshot.PuntoVenta,
+            Ambiente              = _invoicingSnapshot.Ambiente,
+        };
+        _hasCertificate  = _hasCertificateSnapshot;
+        _certSujeto      = _certSujetoSnapshot;
+        _certEmisor      = _certEmisorSnapshot;
+        _certVencimiento = _certVencimientoSnapshot;
+        _certPassword    = "";
+        _pendingPfx      = null;
+    }
+
+    private void CommitInvoicingSnapshot()
+    {
+        _invoicingSnapshot = new FacturacionFormModel
+        {
+            FacturacionHabilitada = _invoicingModel.FacturacionHabilitada,
+            NombreEmpresa         = _invoicingModel.NombreEmpresa,
+            RazonSocial           = _invoicingModel.RazonSocial,
+            Cuit                  = _invoicingModel.Cuit,
+            Address               = _invoicingModel.Address,
+            Phone                 = _invoicingModel.Phone,
+            CondicionIVA          = _invoicingModel.CondicionIVA,
+            PuntoVenta            = _invoicingModel.PuntoVenta,
+            Ambiente              = _invoicingModel.Ambiente,
+        };
+        _hasCertificateSnapshot  = _hasCertificate;
+        _certSujetoSnapshot      = _certSujeto;
+        _certEmisorSnapshot      = _certEmisor;
+        _certVencimientoSnapshot = _certVencimiento;
+    }
+
+    // ── Certificate actions ────────────────────────────
+    private async Task OnCertificateSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        if (!file.Name.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase))
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Archivo inválido", "Solo se permiten archivos .pfx", "error");
+            return;
+        }
+
+        if (file.Size > AfipCertificateHelper.MaxPfxSizeBytes)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Archivo muy grande", "El certificado no puede superar 512 KB", "error");
+            return;
+        }
+
+        using var stream = file.OpenReadStream(AfipCertificateHelper.MaxPfxSizeBytes);
+        using var ms     = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _pendingPfx     = ms.ToArray();
+        _hasCertificate = true;
+    }
+
+    private async Task ValidateCertificateAsync()
+    {
+        var pfx      = _pendingPfx;
+        var password = _certPassword;
+
+        if (pfx is null && !_hasCertificate)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Atención", "Seleccione un certificado .pfx primero.", "warning");
+            return;
+        }
+
+        if (pfx is null && !string.IsNullOrEmpty(_existingProtectedPassword) && string.IsNullOrEmpty(password))
+            password = certificateProtection.Unprotect(_existingProtectedPassword);
+
+        if (pfx is null)
+        {
+            var cfg = await companySettingsRepository.GetByStoreIdAsync(posSessionService.StoreId);
+            pfx = cfg?.CertificatePfx;
+        }
+
+        if (pfx is null || string.IsNullOrEmpty(password))
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Atención", "Ingrese la contraseña del certificado.", "warning");
+            return;
+        }
+
+        var info = AfipCertificateHelper.ValidateCertificate(pfx, password);
+        if (!info.IsValid)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Certificado inválido", info.Error ?? "No se pudo validar", "error");
+            return;
+        }
+
+        _certSujeto      = info.Subject;
+        _certEmisor      = info.Issuer;
+        _certVencimiento = info.ExpirationDate;
+        await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Certificado válido", "El certificado y la contraseña son correctos.", "success");
+    }
+
+    // ── Unified save ───────────────────────────────────
+    private async Task SaveAllAsync()
+    {
+        _saving = true;
+        try
+        {
+            bool esProduccion = _invoicingModel.Ambiente == "Produccion";
+            bool requiereCert = esProduccion || _pendingPfx is not null || !string.IsNullOrEmpty(_certPassword);
+
+            if (esProduccion && string.IsNullOrWhiteSpace(_invoicingModel.Cuit))
+            {
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "El CUIT es obligatorio en producción.", "warning");
+                return;
+            }
+            if (esProduccion && !_hasCertificate && _pendingPfx is null)
+            {
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "En producción debe cargar el certificado .pfx.", "warning");
+                return;
+            }
+            if (requiereCert && _pendingPfx is not null && string.IsNullOrEmpty(_certPassword))
+            {
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "Ingrese la contraseña del certificado.", "warning");
+                return;
+            }
+
+            var dirty = _configs.Where(c => c.IsDirty).ToList();
+            if (dirty.Any())
+            {
+                foreach (var c in dirty)
+                    await configRepository.UpdateValueAsync(c.ConfigId, c.Value);
+                foreach (var c in dirty) c.Commit();
+            }
+
+            var entity = new CompanySettings
+            {
+                StoreId            = posSessionService.StoreId,
+                CompanyName        = _invoicingModel.NombreEmpresa.Trim(),
+                LegalName          = _invoicingModel.RazonSocial.Trim(),
+                TaxId              = AfipCertificateHelper.NormalizeCuit(_invoicingModel.Cuit),
+                Address            = _invoicingModel.Address.Trim(),
+                Phone              = _invoicingModel.Phone.Trim(),
+                TaxCondition       = _invoicingModel.CondicionIVA,
+                PointOfSale        = _invoicingModel.PuntoVenta,
+                Environment        = _invoicingModel.Ambiente,
+                InvoicingEnabled   = _invoicingModel.FacturacionHabilitada,
+                CertificateSubject = _certSujeto,
+                CertificateIssuer  = _certEmisor,
+                ExpirationDate     = _certVencimiento
+            };
+
+            if (_pendingPfx is not null)
+            {
+                if (string.IsNullOrEmpty(_certPassword))
+                {
+                    await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                        "Atención", "Ingrese la contraseña del certificado nuevo.", "warning");
+                    return;
+                }
+                var info = AfipCertificateHelper.ValidateCertificate(_pendingPfx, _certPassword);
+                if (!info.IsValid)
+                {
+                    await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                        "Certificado inválido", info.Error ?? "No se pudo validar", "error");
+                    return;
+                }
+                entity.CertificatePfx      = _pendingPfx;
+                entity.CertificatePassword = certificateProtection.Protect(_certPassword);
+                entity.CertificateSubject  = info.Subject;
+                entity.CertificateIssuer   = info.Issuer;
+                entity.ExpirationDate      = info.ExpirationDate;
+                _certSujeto      = info.Subject;
+                _certEmisor      = info.Issuer;
+                _certVencimiento = info.ExpirationDate;
+            }
+            else if (!string.IsNullOrEmpty(_certPassword))
+            {
+                entity.CertificatePassword = certificateProtection.Protect(_certPassword);
+            }
+
+            await companySettingsRepository.UpsertAsync(entity);
+            _certPassword = "";
+            _pendingPfx   = null;
+            CommitInvoicingSnapshot();
+
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", "Configuración guardada correctamente.", "success");
+        }
+        catch (Exception ex)
+        {
+            await failureRepository.AddAsync(new Failure
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            });
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error al guardar.", "error");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── VM ─────────────────────────────────────────────
+    private class ConfigVM(Config c)
+    {
+        public int    ConfigId    { get; } = c.ConfigId;
+        public string ConfigKey   { get; } = c.ConfigKey;
+        public string Description { get; } = c.Description ?? "";
+        public string Value       { get; set; } = c.Value;
+
+        private string _saved = c.Value;
+        public bool IsDirty => Value != _saved;
+
+        public void Reset()  => Value = _saved;
+        public void Commit() => _saved = Value;
+    }
+
+    private class FacturacionFormModel
+    {
+        public bool   FacturacionHabilitada { get; set; }
+        public string NombreEmpresa         { get; set; } = "";
+        public string RazonSocial           { get; set; } = "";
+        public string Cuit                  { get; set; } = "";
+        public string Address               { get; set; } = "";
+        public string Phone                 { get; set; } = "";
+        public string CondicionIVA          { get; set; } = "Monotributista";
+        public int    PuntoVenta            { get; set; } = 1;
+        public string Ambiente              { get; set; } = "Homologacion";
+    }
+}

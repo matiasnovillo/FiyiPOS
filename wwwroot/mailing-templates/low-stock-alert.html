@@ -1,0 +1,107 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Alerta de stock bajo — FiyiPOS</title>
+<style type="text/css">
+  body { margin:0; padding:0; background:#f5f8fa; font-family:'Segoe UI',Arial,sans-serif; }
+  @media only screen and (max-width:600px){
+    .wrap { width:100% !important; }
+    .pad  { padding:24px 16px !important; }
+  }
+</style>
+</head>
+<body>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f8fa; padding:40px 0;">
+  <tr>
+    <td align="center">
+      <table class="wrap" width="580" cellpadding="0" cellspacing="0" border="0"
+             style="background:#ffffff; border-radius:12px; overflow:hidden;
+                    box-shadow:0 4px 20px rgba(0,0,0,.08);">
+
+        <!-- Header -->
+        <tr>
+          <td align="center"
+              style="background:linear-gradient(135deg,#b91c1c 0%,#dc2626 55%,#ef4444 100%);
+                     padding:36px 40px;">
+            <p style="margin:0; font-size:28px; font-weight:800;
+                      color:#ffffff; letter-spacing:1px;">FiyiPOS</p>
+            <p style="margin:8px 0 0; font-size:13px; color:rgba(255,255,255,.75);
+                      text-transform:uppercase; letter-spacing:2px;">Punto de Venta</p>
+          </td>
+        </tr>
+
+        <!-- Alert badge -->
+        <tr>
+          <td align="center" style="padding:28px 48px 0;">
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px;
+                           padding:12px 24px; color:#b91c1c; font-size:15px; font-weight:700;">
+                  &#9888;&#65039;&nbsp;&nbsp;Alerta de stock bajo
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td class="pad" style="padding:28px 48px 40px;">
+            <p style="margin:0 0 6px; font-size:22px; font-weight:700; color:#3A4656;">
+              Hola, {*1*}
+            </p>
+            <p style="margin:0 0 20px; font-size:15px; color:#64748b; line-height:1.6;">
+              Tras la venta registrada el <strong>{*3*}</strong> en la sucursal
+              <strong>{*2*}</strong>, los siguientes productos pasaron a tener
+              stock por debajo del mínimo configurado:
+            </p>
+
+            <!-- Products table -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                   style="border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;
+                          margin-bottom:28px; font-size:14px;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:12px 16px; text-align:left; color:#475569;
+                             font-weight:600; border-bottom:1px solid #e2e8f0;">
+                    Producto
+                  </th>
+                  <th style="padding:12px 16px; text-align:center; color:#475569;
+                             font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap;">
+                    Stock actual
+                  </th>
+                  <th style="padding:12px 16px; text-align:center; color:#475569;
+                             font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap;">
+                    Stock mínimo
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {*4*}
+              </tbody>
+            </table>
+
+            <p style="margin:0; font-size:14px; color:#64748b; line-height:1.6;">
+              Revisá el inventario y realizá una compra o ajuste de stock a la brevedad
+              para evitar faltantes en ventas futuras.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td align="center"
+              style="background:#f8fafc; padding:24px; border-top:1px solid #e2e8f0;">
+            <p style="margin:0; font-size:12px; color:#94a3b8;">
+              © 2026 FiyiPOS · FiyiStack · Este es un mensaje automático, no respondas a este correo.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

@@ -1,0 +1,309 @@
+@page "/"
+
+@using FiyiPOS.Components.Shared.ComponentsForHome
+
+<PageTitle>FiyiPOS — Sistema de Punto de Venta Web</PageTitle>
+
+<HeadContent>
+    <meta name="description" content="FiyiPOS es el sistema de punto de venta web más simple y completo. Vendé, controlá stock, gestioná créditos y manejá múltiples sucursales desde cualquier dispositivo." />
+    <meta property="og:title" content="FiyiPOS — Sistema de Punto de Venta Web" />
+    <meta property="og:description" content="Vendé, controlá stock, gestioná créditos y manejá múltiples sucursales desde cualquier dispositivo." />
+    <meta property="og:type" content="website" />
+</HeadContent>
+
+<_NavBar></_NavBar>
+
+<!-- ── HERO ── -->
+<section class="lp-hero">
+    <div class="lp-badge">
+        <i class="fas fa-circle" style="font-size:.4rem;"></i>
+        Sistema 100% web · Sin instalación
+    </div>
+    <h1 class="lp-hero-title">
+        El punto de venta que<br>
+        <span>tu negocio necesita</span>
+    </h1>
+    <p class="lp-hero-sub">
+        Cobrá más rápido, controlá tu stock en tiempo real y gestioná
+        múltiples sucursales desde cualquier navegador.
+        Sin complicaciones.
+    </p>
+    <div class="lp-hero-actions">
+        <NavLink href="/crear-cuenta" class="lp-btn-primary">
+            <i class="fas fa-rocket"></i>
+            Empezar gratis 30 días
+        </NavLink>
+        <NavLink href="/entrar" class="lp-btn-ghost">
+            <i class="fas fa-sign-in-alt"></i>
+            Iniciar sesión
+        </NavLink>
+    </div>
+    <div class="lp-hero-stats">
+        <div class="lp-stat">
+            <div class="lp-stat-num">30s</div>
+            <div class="lp-stat-label">Para crear tu cuenta</div>
+        </div>
+        <div class="lp-stat">
+            <div class="lp-stat-num">100%</div>
+            <div class="lp-stat-label">Web, sin instalación</div>
+        </div>
+        <div class="lp-stat">
+            <div class="lp-stat-num">∞</div>
+            <div class="lp-stat-label">Productos y clientes</div>
+        </div>
+        <div class="lp-stat">
+            <div class="lp-stat-num">30d</div>
+            <div class="lp-stat-label">Gratis para probar</div>
+        </div>
+    </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="lp-section lp-section-dark">
+    <div class="container">
+        <h2 class="lp-section-title">Todo lo que necesitás en un solo lugar</h2>
+        <p class="lp-section-sub">
+            Desde la venta hasta el cierre de caja, FiyiPOS cubre cada etapa
+            de tu operación diaria sin fricciones.
+        </p>
+        <div class="lp-features-grid">
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#dbeafe;color:#1d4ed8;">
+                    <i class="fas fa-cash-register"></i>
+                </div>
+                <div class="lp-feature-title">Ventas ultrarrápidas</div>
+                <p class="lp-feature-desc">
+                    Escaneá códigos de barra, ajustá cantidades y cobrá en segundos.
+                    Efectivo, tarjeta, transferencia o crédito.
+                </p>
+            </div>
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#d1fae5;color:#065f46;">
+                    <i class="fas fa-boxes"></i>
+                </div>
+                <div class="lp-feature-title">Inventario en tiempo real</div>
+                <p class="lp-feature-desc">
+                    Cada venta descuenta stock automáticamente. Registrá entradas,
+                    salidas y ajustes con razón y referencia.
+                </p>
+            </div>
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#fce7f3;color:#9d174d;">
+                    <i class="fas fa-handshake"></i>
+                </div>
+                <div class="lp-feature-title">Créditos a clientes</div>
+                <p class="lp-feature-desc">
+                    Vendé a crédito, configurá límites y llevá el historial de abonos.
+                    El saldo se cierra solo al saldar.
+                </p>
+            </div>
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#ede9fe;color:#5b21b6;">
+                    <i class="fas fa-store"></i>
+                </div>
+                <div class="lp-feature-title">Multi-sucursal</div>
+                <p class="lp-feature-desc">
+                    Manejá varios locales con productos, clientes y configuraciones
+                    independientes. Cambiá de sucursal con un clic.
+                </p>
+            </div>
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#fef3c7;color:#92400e;">
+                    <i class="fas fa-cut"></i>
+                </div>
+                <div class="lp-feature-title">Corte de caja</div>
+                <p class="lp-feature-desc">
+                    Cerrá el día con un desglose detallado por método de pago.
+                    Calculá diferencias de efectivo al instante.
+                </p>
+            </div>
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#ccfbf1;color:#0f766e;">
+                    <i class="fas fa-receipt"></i>
+                </div>
+                <div class="lp-feature-title">Ticket digital</div>
+                <p class="lp-feature-desc">
+                    Al confirmar una venta aparece el ticket formateado listo para
+                    imprimir en impresoras de 58/80 mm o para fotografiar.
+                </p>
+            </div>
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#fee2e2;color:#991b1b;">
+                    <i class="fas fa-truck"></i>
+                </div>
+                <div class="lp-feature-title">Compras a proveedores</div>
+                <p class="lp-feature-desc">
+                    Cargá órdenes de compra por proveedor. Al confirmar la recepción
+                    el stock se actualiza automáticamente.
+                </p>
+            </div>
+
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon" style="background:#e0f2fe;color:#0369a1;">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <div class="lp-feature-title">Roles y operadores</div>
+                <p class="lp-feature-desc">
+                    Creá cajeros y supervisores con permisos diferenciados.
+                    Cada rol ve solo lo que necesita.
+                </p>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- ── WHY ── -->
+<section class="lp-section">
+    <div class="container">
+        <h2 class="lp-section-title">¿Por qué elegir FiyiPOS?</h2>
+        <p class="lp-section-sub">
+            Diseñado para negocios reales, no para demostraciones.
+            Simple de aprender, poderoso en el día a día.
+        </p>
+        <div class="lp-why-grid">
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>Sin instalación</strong>
+                    <span>Funciona en cualquier navegador, PC o tablet.</span>
+                </div>
+            </div>
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>Precio transparente</strong>
+                    <span>Un precio fijo mensual, sin sorpresas ni comisiones.</span>
+                </div>
+            </div>
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>Multi-sucursal incluido</strong>
+                    <span>No pagás extra por cada local que agregués.</span>
+                </div>
+            </div>
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>Soporte por WhatsApp</strong>
+                    <span>Atención directa, sin formularios ni tickets de soporte.</span>
+                </div>
+            </div>
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>30 días gratis</strong>
+                    <span>Probás sin pagar nada y sin dar tarjeta de crédito.</span>
+                </div>
+            </div>
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>Sin permanencia</strong>
+                    <span>Cancelás cuando querés, sin penalidades.</span>
+                </div>
+            </div>
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>Datos solo tuyos</strong>
+                    <span>Tu información nunca se comparte con terceros.</span>
+                </div>
+            </div>
+            <div class="lp-why-item">
+                <div class="lp-why-check"><i class="fas fa-check"></i></div>
+                <div class="lp-why-text">
+                    <strong>Actualizaciones incluidas</strong>
+                    <span>Nuevas funciones sin costo adicional.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── PRICING ── -->
+<section class="lp-section lp-section-dark">
+    <div class="container">
+        <h2 class="lp-section-title">Un precio, todo incluido</h2>
+        <p class="lp-section-sub">
+            Sin planes, sin niveles. Todo lo que FiyiPOS ofrece por una cuota mensual fija.
+        </p>
+        <div class="lp-pricing-card">
+            <div class="lp-pricing-header">
+                <div class="lp-pricing-label">Suscripción mensual</div>
+                <div class="lp-pricing-amount">$26.000</div>
+                <div class="lp-pricing-period">pesos argentinos · por cuenta</div>
+            </div>
+            <div class="lp-pricing-body">
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Sucursales ilimitadas
+                </div>
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Operadores ilimitados
+                </div>
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Productos y clientes ilimitados
+                </div>
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Inventario, compras y corte de caja
+                </div>
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Créditos a clientes
+                </div>
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Ticket digital + impresión térmica
+                </div>
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Soporte por WhatsApp
+                </div>
+                <div class="lp-pricing-item">
+                    <i class="fas fa-check-circle"></i> Actualizaciones incluidas
+                </div>
+                <div class="lp-trial-badge">
+                    <i class="fas fa-gift me-1"></i>
+                    30 días de prueba gratuita · Sin tarjeta de crédito
+                </div>
+                <div class="text-center mt-3">
+                    <NavLink href="/crear-cuenta" class="lp-btn-primary" style="width:100%;justify-content:center;">
+                        <i class="fas fa-rocket"></i> Empezar ahora gratis
+                    </NavLink>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── CTA FINAL ── -->
+<section class="lp-cta">
+    <div class="container">
+        <h2 class="lp-cta-title">¿Listo para modernizar tu negocio?</h2>
+        <p class="lp-cta-sub">
+            Creá tu cuenta en 30 segundos y empezá a vender hoy mismo.
+        </p>
+        <div class="lp-hero-actions">
+            <NavLink href="/crear-cuenta" class="lp-btn-primary">
+                <i class="fas fa-user-plus"></i>
+                Crear cuenta gratis
+            </NavLink>
+            <a href="https://wa.me/543512329541?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20FiyiPOS."
+               target="_blank"
+               class="lp-btn-ghost">
+                <i class="fab fa-whatsapp"></i>
+                Consultar por WhatsApp
+            </a>
+        </div>
+    </div>
+</section>
+
+<_Footer></_Footer>
+
+@code {
+}

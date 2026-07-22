@@ -1,0 +1,26 @@
+﻿@using System.Net.Http;
+@using System.Net.Http.Json;
+@using Microsoft.AspNetCore.Components.Forms;
+@using Microsoft.AspNetCore.Components.Routing;
+@using Microsoft.AspNetCore.Components.Web;
+@using static Microsoft.AspNetCore.Components.Web.RenderMode;
+@using Microsoft.AspNetCore.Components.Web.Virtualization;
+@using Microsoft.JSInterop;
+@using System.Data;
+@using System.Globalization;
+
+@using FiyiPOS;
+@using FiyiPOS.Components;
+@using FiyiPOS.Components.Shared;
+@using FiyiPOS.Components.Shared.Components;
+
+@using FiyiPOS.Areas.System.FailureBack.Repositories;
+@using FiyiPOS.Areas.System.FailureBack.Entities;
+@using FiyiPOS.Areas.System.FailureBack.Services;
+
+@inject FailureRepository failureRepository;
+
+@using System.ComponentModel.DataAnnotations
+
+@inject NavigationManager NavigationManager;
+@inject IJSRuntime IJSRuntime;

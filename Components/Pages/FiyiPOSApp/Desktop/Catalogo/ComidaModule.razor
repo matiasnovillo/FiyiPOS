@@ -1,0 +1,252 @@
+@using FiyiPOS.Services.FiyiPOS
+
+@inject PosSessionService posSessionService
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">ARMADO DE COMIDA</div>
+    <div class="header-sub">Gestión de preparación y armado de pedidos.</div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="toolbar-left">
+        <div class="search-bar">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Buscar pedido o producto..."
+                   @bind="_search" @bind:event="oninput" autocomplete="off" />
+        </div>
+        <div class="filter-chips">
+            @foreach (var f in _filtros)
+            {
+                <button class="filter-chip @(_filtroActivo == f.Key ? "active" : "")"
+                        @onclick="() => _filtroActivo = f.Key">
+                    @f.Value
+                </button>
+            }
+        </div>
+    </div>
+    <button class="abtn abtn-green" @onclick="AbrirNuevoPedido">
+        <i class="fas fa-plus me-1"></i>Nuevo pedido
+    </button>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card">
+        <span class="stat-label">Pendientes</span>
+        <span class="stat-value c-warning">@PedidosFiltrados.Count(p => p.Estado == "pendiente")</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">En preparación</span>
+        <span class="stat-value c-primary">@PedidosFiltrados.Count(p => p.Estado == "preparando")</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Listos</span>
+        <span class="stat-value c-success">@PedidosFiltrados.Count(p => p.Estado == "listo")</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Total hoy</span>
+        <span class="stat-value">@_pedidos.Count</span>
+    </div>
+</div>
+
+<!-- ── LISTA DE PEDIDOS ── -->
+<div class="list-container">
+    @if (!PedidosFiltrados.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-utensils fa-3x"></i>
+            <p>No hay pedidos @(_filtroActivo == "todos" ? "" : $"con estado '{_filtros[_filtroActivo]}'")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Notas</th>
+                    <th>Hora</th>
+                    <th>Estado</th>
+                    <th class="actions-cell">Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in PedidosFiltrados)
+                {
+                    <tr class="@(p.Estado == "listo" ? "row-inactive" : "")">
+                        <td><strong>#@p.Id</strong></td>
+                        <td>
+                            <div class="name-stack">
+                                <span class="name-cell">@p.Producto</span>
+                                @if (!string.IsNullOrEmpty(p.Variante))
+                                {
+                                    <span style="color:var(--pos-text-muted);font-size:.85rem;">@p.Variante</span>
+                                }
+                            </div>
+                        </td>
+                        <td><strong>@p.Cantidad</strong></td>
+                        <td style="color:var(--pos-text-muted);">@(string.IsNullOrEmpty(p.Notas) ? "—" : p.Notas)</td>
+                        <td style="color:var(--pos-text-muted);">@p.Hora.ToString("HH:mm")</td>
+                        <td>
+                            <span class="status-badge @GetEstadoClass(p.Estado)">
+                                @_estadoLabel[p.Estado]
+                            </span>
+                        </td>
+                        <td class="actions-cell">
+                            @if (p.Estado == "pendiente")
+                            {
+                                <button class="abtn abtn-sky" @onclick="() => IniciarPreparacion(p)">
+                                    <i class="fas fa-fire me-1"></i>Preparar
+                                </button>
+                            }
+                            else if (p.Estado == "preparando")
+                            {
+                                <button class="abtn abtn-green" @onclick="() => MarcarListo(p)">
+                                    <i class="fas fa-check me-1"></i>Listo
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="abtn abtn-gray" @onclick="() => EliminarPedido(p)">
+                                    <i class="fas fa-trash me-1"></i>Quitar
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── MODAL NUEVO PEDIDO ── -->
+@if (_mostrarModal)
+{
+    <div class="modal-overlay" @onclick="CerrarModal">
+        <div class="panel" style="max-width:480px;width:95vw;" @onclick:stopPropagation>
+            <div class="panel-header">
+                <span><i class="fas fa-plus me-2"></i>Nuevo pedido</span>
+                <button class="panel-close fs-3" @onclick="CerrarModal">×</button>
+            </div>
+            <div class="panel-body" style="padding:1.25rem;display:flex;flex-direction:column;gap:.85rem;">
+                <div class="field field-full">
+                    <label>Producto *</label>
+                    <input type="text" @bind="_nuevo.Producto" placeholder="Nombre del producto..." />
+                </div>
+                <div class="field field-full">
+                    <label>Variante / tamaño</label>
+                    <input type="text" @bind="_nuevo.Variante" placeholder="Grande, con extra queso..." />
+                </div>
+                <div class="field">
+                    <label>Cantidad *</label>
+                    <input type="number" min="1" @bind="_nuevo.Cantidad" />
+                </div>
+                <div class="field field-full">
+                    <label>Notas / instrucciones</label>
+                    <input type="text" @bind="_nuevo.Notas" placeholder="Sin cebolla, extra salsa..." />
+                </div>
+                @if (!string.IsNullOrEmpty(_modalError))
+                {
+                    <p style="color:var(--pos-danger);margin:0;">@_modalError</p>
+                }
+            </div>
+            <div class="panel-footer">
+                <button class="abtn abtn-gray" @onclick="CerrarModal">Cancelar</button>
+                <button class="abtn abtn-green" @onclick="GuardarPedido">
+                    <i class="fas fa-check me-1"></i>Agregar pedido
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    private class Pedido
+    {
+        public int    Id       { get; set; }
+        public string Producto { get; set; } = "";
+        public string Variante { get; set; } = "";
+        public int    Cantidad { get; set; } = 1;
+        public string Notas    { get; set; } = "";
+        public string Estado   { get; set; } = "pendiente";
+        public DateTime Hora   { get; set; } = DateTime.Now;
+    }
+
+    private readonly List<Pedido> _pedidos = new();
+    private int    _nextId      = 1;
+    private string _search      = "";
+    private string _filtroActivo = "todos";
+    private bool   _mostrarModal = false;
+    private string _modalError   = "";
+    private Pedido _nuevo        = new();
+
+    private static readonly Dictionary<string, string> _filtros = new()
+    {
+        ["todos"]      = "Todos",
+        ["pendiente"]  = "Pendientes",
+        ["preparando"] = "En preparación",
+        ["listo"]      = "Listos",
+    };
+
+    private static readonly Dictionary<string, string> _estadoLabel = new()
+    {
+        ["pendiente"]  = "Pendiente",
+        ["preparando"] = "En preparación",
+        ["listo"]      = "Listo",
+    };
+
+    private IEnumerable<Pedido> PedidosFiltrados =>
+        _pedidos
+            .Where(p => _filtroActivo == "todos" || p.Estado == _filtroActivo)
+            .Where(p => string.IsNullOrWhiteSpace(_search) ||
+                        p.Producto.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                        p.Id.ToString() == _search.Trim())
+            .OrderBy(p => p.Estado == "listo" ? 1 : 0)
+            .ThenBy(p => p.Hora);
+
+    private static string GetEstadoClass(string estado) => estado switch
+    {
+        "pendiente"  => "comida-badge-pendiente",
+        "preparando" => "comida-badge-preparando",
+        "listo"      => "status-active",
+        _            => "",
+    };
+
+    private void AbrirNuevoPedido()
+    {
+        _nuevo      = new Pedido { Cantidad = 1 };
+        _modalError = "";
+        _mostrarModal = true;
+    }
+
+    private void CerrarModal() => _mostrarModal = false;
+
+    private void GuardarPedido()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevo.Producto))
+        {
+            _modalError = "El nombre del producto es obligatorio.";
+            return;
+        }
+        if (_nuevo.Cantidad < 1)
+        {
+            _modalError = "La cantidad debe ser al menos 1.";
+            return;
+        }
+        _nuevo.Id   = _nextId++;
+        _nuevo.Hora = DateTime.Now;
+        _pedidos.Add(_nuevo);
+        _mostrarModal = false;
+    }
+
+    private void IniciarPreparacion(Pedido p) => p.Estado = "preparando";
+    private void MarcarListo(Pedido p)        => p.Estado = "listo";
+    private void CambiarEstado(Pedido p, string nuevoEstado) => p.Estado = nuevoEstado;
+
+    private void EliminarPedido(Pedido p) => _pedidos.Remove(p);
+}

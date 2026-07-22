@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-Content \"c:\\\\FiyiStack\\\\G1-Blazor.NET8\\\\POS26\\\\wwwroot\\\\css\\\\POS26\\\\POS26.css\")",
+      "Bash(Measure-Object -Line)",
+      "Bash(Select-Object -ExpandProperty Lines)",
+      "PowerShell(\\(Get-Content \"c:\\\\FiyiStack\\\\G1-Blazor.NET8\\\\POS26\\\\wwwroot\\\\css\\\\POS26\\\\POS26.css\"\\).Count)",
+      "PowerShell(\\(Get-Content \"c:\\\\FiyiStack\\\\G1-Blazor.NET8\\\\POS26\\\\Backup\\\\pos_schema.sql\"\\).Count)",
+      "Bash(dotnet build *)",
+      "PowerShell($content = Get-Content \"c:\\\\FiyiStack\\\\G1-Blazor.NET8\\\\POS26\\\\wwwroot\\\\css\\\\POS26\\\\POS26.css\" -Raw; $content.Split\\(\"`n\"\\).Count)",
+      "PowerShell(\\(Get-Content \"c:\\\\FiyiStack\\\\G1-Blazor.NET8\\\\POS26\\\\wwwroot\\\\css\\\\POS26\\\\POS26.css\" | Measure-Object -Line\\).Lines)"
+    ]
+  }
+}

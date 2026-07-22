@@ -1,0 +1,1182 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PurchaseBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PurchaseBack.DTOs
+@using FiyiPOS.Services.FiyiPOS
+@using System.Text
+
+@inject SaleRepository         saleRepository
+@inject CashMovementRepository cashMovementRepository
+@inject ConfigRepository       configRepository
+@inject PurchaseRepository     purchaseRepository
+@inject PosSessionService      posSessionService
+
+<!-- ── HEADER ── -->
+<div class="ticket-banner">
+    <i class="fas fa-chart-bar"></i>
+    REPORTES — Análisis de ventas
+</div>
+
+<!-- ── FILTROS ── -->
+<div class="rep-filter-bar">
+    <div class="rep-filter-group">
+        <label class="fs-6">Desde</label>
+        <input type="date" class="rep-date-input fs-6"
+               @bind="_from" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="rep-filter-group">
+        <label class="fs-6">Hasta</label>
+        <input type="date" class="rep-date-input fs-6"
+               @bind="_to" @bind:format="yyyy-MM-dd" />
+    </div>
+    <div class="rep-filter-shortcuts">
+        <button class="abtn abtn-primary" @onclick="() => SetRange(0)">Hoy</button>
+        <button class="abtn abtn-primary" @onclick="() => SetRange(7)">7 días</button>
+        <button class="abtn abtn-primary" @onclick="() => SetRange(30)">30 días</button>
+        <button class="abtn abtn-primary" @onclick="SetThisMonth">Este mes</button>
+    </div>
+    <button class="abtn abtn-green" @onclick="GenerateAsync" disabled="@_loading">
+        <i class="fas @(_loading ? "fa-spinner fa-spin" : "fa-play")"></i>
+        @(_loading ? "Cargando..." : "Generar")
+    </button>
+    @if (_generated)
+    {
+        <button class="abtn abtn-sky" @onclick="DownloadReportAsync" disabled="@_downloadingReport">
+            <i class="fas @(_downloadingReport ? "fa-spinner fa-spin" : "fa-file-pdf")"></i>
+            @(_downloadingReport ? "Generando..." : "Descargar informe")
+        </button>
+    }
+</div>
+
+<!-- ── TABS ── -->
+<div class="rep-tabs">
+    <button class="rep-tab @(_activeTab == "resumen"   ? "active" : "")" @onclick='() => _activeTab = "resumen"'>
+        <i class="fas fa-chart-pie fa-xl"></i> 
+        <span class="fs-6">Resumen</span>
+    </button>
+    <button class="rep-tab @(_activeTab == "productos" ? "active" : "")" @onclick='() => _activeTab = "productos"'>
+        <i class="fas fa-boxes fa-xl"></i>
+        <span class="fs-6">Productos</span>
+    </button>
+    <button class="rep-tab @(_activeTab == "operadores" ? "active" : "")" @onclick='() => _activeTab = "operadores"'>
+        <i class="fas fa-users fa-xl"></i>
+        <span class="fs-6">Operadores</span>
+    </button>
+    <button class="rep-tab @(_activeTab == "tickets" ? "active" : "")" @onclick='() => _activeTab = "tickets"'>
+        <i class="fas fa-receipt fa-xl"></i>
+        <span class="fs-6">Tickets</span>
+    </button>
+    <button class="rep-tab @(_activeTab == "ganancias" ? "active" : "")" @onclick='() => _activeTab = "ganancias"'>
+        <i class="fas fa-chart-line fa-xl"></i>
+        <span class="fs-6">Ganancias</span>
+    </button>
+</div>
+
+<!-- ── CONTENIDO ── -->
+<div class="rep-content">
+
+    @if (!_generated)
+    {
+        <div class="empty-state">
+            <i class="fas fa-chart-bar fa-xl"></i>
+            <p class="fs-6">Seleccioná un rango de fechas y presioná <strong class="fs-6">Generar</strong></p>
+        </div>
+    }
+    else if (_activeTab == "resumen" && _summary != null)
+    {
+        <!-- KPIs -->
+        <div class="rep-kpi-row">
+            <div class="rep-kpi">
+                <div class="rep-kpi-icon" style="background:rgba(29,78,216,.15);color:#60a5fa;">
+                    <i class="fas fa-dollar-sign fa-xl"></i>
+                </div>
+                <div>
+                    <div class="rep-kpi-label fs-6">Total vendido</div>
+                    <div class="rep-kpi-value">$@_summary.TotalRevenue.ToString("N2")</div>
+                </div>
+            </div>
+            <div class="rep-kpi">
+                <div class="rep-kpi-icon" style="background:rgba(5,150,105,.15);color:#34d399;">
+                    <i class="fas fa-receipt fa-xl"></i>
+                </div>
+                <div>
+                    <div class="rep-kpi-label fs-6">N° de ventas</div>
+                    <div class="rep-kpi-value">@_summary.SalesCount.ToString("N0")</div>
+                </div>
+            </div>
+            <div class="rep-kpi">
+                <div class="rep-kpi-icon" style="background:rgba(139,92,246,.15);color:#a78bfa;">
+                    <i class="fas fa-tags fa-xl"></i>
+                </div>
+                <div>
+                    <div class="rep-kpi-label fs-6">Ticket promedio</div>
+                    <div class="rep-kpi-value">$@_summary.AverageTicket.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Desglose por método de pago -->
+        <div class="rep-section-title">
+            <i class="fas fa-credit-card ms-2 me-2 fa-xl"></i>Desglose por método de pago
+        </div>
+        @if (!_summary.ByPaymentMethod.Any())
+        {
+            <div class="rep-empty">Sin ventas en el período seleccionado.</div>
+        }
+        else
+        {
+            <table class="rep-table">
+                <thead>
+                    <tr>
+                        <th class="fs-6">Método de pago</th>
+                        <th class="rep-num fs-6">N° transacciones</th>
+                        <th class="rep-num fs-6">Total</th>
+                        <th class="rep-num fs-6">% del total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _summary.ByPaymentMethod.OrderByDescending(r => r.Total))
+                    {
+                        decimal pct = _summary.TotalRevenue > 0
+                            ? Math.Round(row.Total / _summary.TotalRevenue * 100, 1) : 0;
+                        <tr>
+                            <td>
+                                <i class="fas @GetPaymentIcon(row.MethodName) me-2 fa-xl" style="color:#6366f1;"></i>
+                                <span class="fs-6">@row.MethodName</span>
+                            </td>
+                            <td class="rep-num fs-6">@row.Count</td>
+                            <td class="rep-num rep-bold fs-6">$@row.Total.ToString("N2")</td>
+                            <td class="rep-num fs-6">
+                                <div class="rep-pct-bar-wrap">
+                                    <div class="rep-pct-bar" style="width:@pct%;"></div>
+                                    <span class="fs-6">@pct%</span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <!-- Movimientos de efectivo del período -->
+        <div class="rep-section-title" style="margin-top:1.2rem;">
+            <i class="fas fa-exchange-alt ms-2 me-2 fa-xl"></i>Movimientos de efectivo del período
+        </div>
+        @if (!_movements.Any())
+        {
+            <div class="rep-empty">Sin movimientos de efectivo en el período seleccionado.</div>
+        }
+        else
+        {
+            decimal movIn  = _movements.Where(m => m.Type == "IN").Sum(m => m.Amount);
+            decimal movOut = _movements.Where(m => m.Type == "OUT").Sum(m => m.Amount);
+            decimal movNet = movIn - movOut;
+
+            <div class="rep-kpi-row">
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(5,150,105,.15);color:#34d399;">
+                        <i class="fas fa-arrow-down fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Total entradas</div>
+                        <div class="rep-kpi-value">$@movIn.ToString("N2")</div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(220,38,38,.15);color:#f87171;">
+                        <i class="fas fa-arrow-up fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Total salidas</div>
+                        <div class="rep-kpi-value">$@movOut.ToString("N2")</div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(139,92,246,.15);color:#a78bfa;">
+                        <i class="fas fa-balance-scale fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Balance neto</div>
+                        <div class="rep-kpi-value" style="@(movNet < 0 ? "color:#f87171;" : "")">$@movNet.ToString("N2")</div>
+                    </div>
+                </div>
+            </div>
+
+            <table class="rep-table" style="margin-top:.5rem;">
+                <thead>
+                    <tr>
+                        <th class="fs-6">Tipo</th>
+                        <th class="fs-6">Fecha y hora</th>
+                        <th class="fs-6">Concepto</th>
+                        <th class="fs-6">Operador</th>
+                        <th class="rep-num fs-6">Importe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in _movements)
+                    {
+                        <tr>
+                            <td>
+                                @if (m.Type == "IN")
+                                {
+                                    <span class="mov-badge-in fs-6"><i class="fas fa-arrow-down me-1"></i>Entrada</span>
+                                }
+                                else
+                                {
+                                    <span class="mov-badge-out fs-6"><i class="fas fa-arrow-up me-1"></i>Salida</span>
+                                }
+                            </td>
+                            <td class="fs-6" style="color:var(--text-muted);">@m.MovementDate.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="fs-6">@m.Reason</td>
+                            <td class="fs-6">@m.OperatorName</td>
+                            <td class="rep-num rep-bold fs-6" style="color:@(m.Type == "IN" ? "#059669" : "#dc2626");">
+                                @(m.Type == "IN" ? "+" : "−")$@m.Amount.ToString("N2")
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+    else if (_activeTab == "productos")
+    {
+        <div class="rep-section-title">
+            <i class="fas fa-trophy me-2 fa-xl" style="color:#f59e0b;"></i>
+            <span class="fs-6">Top 20 productos más vendidos</span>
+        </div>
+        @if (!_topProducts.Any())
+        {
+            <div class="rep-empty fs-6">Sin ventas en el período seleccionado.</div>
+        }
+        else
+        {
+            decimal maxUnits = _topProducts.Max(p => p.UnitsSold);
+            <table class="rep-table">
+                <thead>
+                    <tr>
+                        <th class="fs-6">#</th>
+                        <th class="fs-6">Producto</th>
+                        <th class="rep-num fs-6">Unidades</th>
+                        <th class="rep-num fs-6">Importe</th>
+                        <th class="rep-num fs-6">% unidades</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ int rank = 1; }
+                    @foreach (var p in _topProducts)
+                    {
+                        decimal pct = maxUnits > 0
+                            ? Math.Round(p.UnitsSold / maxUnits * 100, 1) : 0;
+                        <tr>
+                            <td class="rep-rank">
+                                @if (rank == 1)
+                                {
+                                    <span class="rep-medal gold fs-6">①</span>
+                                }
+                                else if (rank == 2)
+                                {
+
+                                    <span class="rep-medal silver fs-6">②</span>
+                                }
+                                else if (rank == 3)
+                                {
+
+                                    <span class="rep-medal bronze fs-6">③</span>
+                                }
+                                else
+                                {
+
+                                    <span class="rep-rank-num fs-6">@rank</span>
+                                }
+                            </td>
+                            <td class="fs-6">@p.ProductName</td>
+                            <td class="rep-num rep-bold fs-6">@p.UnitsSold.ToString("N2")</td>
+                            <td class="rep-num fs-6">$@p.Revenue.ToString("N2")</td>
+                            <td class="rep-num fs-6">
+                                <div class="rep-pct-bar-wrap">
+                                    <div class="rep-pct-bar rep-pct-bar-green" style="width:@pct%;"></div>
+                                    <span class="fs-6">@pct%</span>
+                                </div>
+                            </td>
+                        </tr>
+                        rank++;
+                    }
+                </tbody>
+            </table>
+        }
+        <!-- Productos por categoría -->
+        @if (_productsByCategory.Any())
+        {
+            <div class="rep-section-title" style="margin-top:1.4rem;">
+                <i class="fas fa-th-list ms-2 me-2 fa-xl"></i>
+                <span class="fs-6">Desglose por categoría</span>
+            </div>
+            @foreach (var group in _productsByCategory)
+            {
+                decimal catTotal = group.Lines.Sum(l => l.TotalSubtotal);
+                <div class="rep-cat-header fs-6">
+                    <i class="fas fa-tag me-1"></i>@group.CategoryName
+                    <span class="rep-cat-total fs-6">$@catTotal.ToString("N2")</span>
+                </div>
+                <table class="rep-table rep-cat-table">
+                    <thead>
+                        <tr>
+                            <th class="fs-6">Producto</th>
+                            <th class="rep-num fs-6">Cantidad</th>
+                            <th class="rep-num fs-6">Importe total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in group.Lines)
+                        {
+                            <tr>
+                                <td class="fs-6">@line.ProductName</td>
+                                <td class="rep-num fs-6">@line.TotalQty.ToString("N2")</td>
+                                <td class="rep-num rep-bold fs-6">$@line.TotalSubtotal.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            <div class="rep-cat-grand-total fs-6">
+                Total general:
+                <strong>$@_productsByCategory.Sum(g => g.Lines.Sum(l => l.TotalSubtotal)).ToString("N2")</strong>
+            </div>
+        }
+    }
+    else if (_activeTab == "operadores")
+    {
+        <div class="rep-section-title">
+            <i class="fas fa-users me-2 fa-xl"></i>
+            <span class="fs-6">Ventas por operador</span>
+        </div>
+        @if (!_operatorSales.Any())
+        {
+            <div class="rep-empty fs-6">Sin ventas en el período seleccionado.</div>
+        }
+        else
+        {
+            decimal maxSold = _operatorSales.Max(o => o.TotalSold);
+            <table class="rep-table">
+                <thead>
+                    <tr>
+                        <th class="fs-6">Operador</th>
+                        <th class="rep-num fs-6">N° ventas</th>
+                        <th class="rep-num fs-6">Total vendido</th>
+                        <th class="rep-num fs-6">Ticket promedio</th>
+                        <th class="rep-num fs-6">Participación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var op in _operatorSales)
+                    {
+                        decimal avg = op.SalesCount > 0
+                            ? Math.Round(op.TotalSold / op.SalesCount, 2) : 0;
+                        decimal pct = maxSold > 0
+                            ? Math.Round(op.TotalSold / maxSold * 100, 1) : 0;
+                        <tr>
+                            <td>
+                                <div class="rep-op-name">
+                                    <div class="rep-op-avatar">
+                                        @op.OperatorName.Substring(0, 1).ToUpper()
+                                    </div>
+                                    <span class="fs-6">@op.OperatorName</span>
+                                </div>
+                            </td>
+                            <td class="rep-num fs-6">@op.SalesCount</td>
+                            <td class="rep-num rep-bold fs-6">$@op.TotalSold.ToString("N2")</td>
+                            <td class="rep-num fs-6">$@avg.ToString("N2")</td>
+                            <td class="rep-num fs-6">
+                                <div class="rep-pct-bar-wrap">
+                                    <div class="rep-pct-bar rep-pct-bar-purple" style="width:@pct%;"></div>
+                                    <span class="fs-6">@pct%</span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+    else if (_activeTab == "tickets")
+    {
+        <div class="rep-section-title">
+            <i class="fas fa-receipt me-2 fa-xl"></i>
+            <span class="fs-6">Tickets del período — @_saleList.Count resultado@(_saleList.Count != 1 ? "s" : "")</span>
+        </div>
+        @if (!_saleList.Any())
+        {
+            <div class="rep-empty fs-6">Sin ventas en el período seleccionado.</div>
+        }
+        else
+        {
+            <table class="rep-table rep-tickets-table">
+                <thead>
+                    <tr>
+                        <th class="fs-6">Ticket</th>
+                        <th class="fs-6">Fecha y hora</th>
+                        <th class="fs-6">Operador</th>
+                        <th class="fs-6">Cliente</th>
+                        <th class="rep-num fs-6">Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in _saleList)
+                    {
+                        <tr class="rep-ticket-row" @onclick="() => OpenSaleTicketAsync(s)">
+                            <td>    
+                                <span class="rep-ticket-num fs-6">@s.TicketNumber</span>
+                            </td>
+                            <td style="color:var(--text-secondary);font-size:1rem;">
+                                @s.SaleDate.ToString("dd/MM/yyyy HH:mm")
+                            </td>
+                            <td>
+                                <span class="fs-6">@s.OperatorName</span>
+                            </td>
+                            <td style="color:var(--text-muted);font-size:1rem;">
+                                @(string.IsNullOrWhiteSpace(s.ClientName) ? "—" : s.ClientName)
+                            </td>
+                            <td class="rep-num rep-bold fs-6">$@s.Total.ToString("N2")</td>
+                            <td class="rep-num">
+                                @if (s.IsCredit)
+                                {
+                                    <span class="rep-credit-badge fs-6">Crédito</span>
+                                }
+                                @if (_loadingTicket && _loadingTicketId == s.SaleId)
+                                {
+                                    <i class="fas fa-spinner fa-spin fa-xl" style="color:#6366f1;"></i>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-eye fa-xl" style="color:#6366f1;opacity:.7;"></i>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+    else if (_activeTab == "ganancias")
+    {
+        @if (!_profitability.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-chart-line fa-xl"></i>
+                <p class="fs-6">Sin datos de rentabilidad para el período seleccionado.</p>
+            </div>
+        }
+        else
+        {
+            decimal totalRevenueGross = _summary?.TotalRevenue    ?? 0;   // Ventas con IVA
+            decimal totalRevenueNet   = _summary?.TotalRevenueNet ?? 0;   // Ventas sin IVA
+            decimal totalCOGS         = _profitability.Sum(l => l.TotalCost);
+
+            decimal profitNet    = totalRevenueNet   - totalCOGS;
+            decimal marginNet    = totalRevenueNet   > 0 ? Math.Round(profitNet   / totalRevenueNet   * 100, 1) : 0;
+            decimal profitGross  = totalRevenueGross - totalCOGS;
+            decimal marginGross  = totalRevenueGross > 0 ? Math.Round(profitGross / totalRevenueGross * 100, 1) : 0;
+
+            <div class="rep-kpi-row">
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(29,78,216,.15);color:#60a5fa;">
+                        <i class="fas fa-dollar-sign fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Ventas con IVA</div>
+                        <div class="rep-kpi-value">$@totalRevenueGross.ToString("N2")</div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(59,130,246,.15);color:#60a5fa;">
+                        <i class="fas fa-file-invoice-dollar fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Ventas sin IVA</div>
+                        <div class="rep-kpi-value">$@totalRevenueNet.ToString("N2")</div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(220,38,38,.15);color:#f87171;">
+                        <i class="fas fa-boxes fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Costo de productos vendidos (COGS)</div>
+                        <div class="rep-kpi-value">$@totalCOGS.ToString("N2")</div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:@(profitNet >= 0 ? "rgba(5,150,105,.15)" : "rgba(220,38,38,.15)");color:@(profitNet >= 0 ? "#34d399" : "#f87171");">
+                        <i class="fas fa-chart-line fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Ganancia bruta (sin IVA)</div>
+                        <div class="rep-kpi-value" style="color:@(profitNet >= 0 ? "#059669" : "#dc2626");">
+                            $@profitNet.ToString("N2")
+                        </div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(139,92,246,.15);color:#a78bfa;">
+                        <i class="fas fa-percent fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Margen bruto (sin IVA)</div>
+                        <div class="rep-kpi-value" style="color:@(marginNet >= 0 ? "#059669" : "#dc2626");">
+                            @marginNet.ToString("N1")%
+                        </div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:@(profitGross >= 0 ? "rgba(5,150,105,.15)" : "rgba(220,38,38,.15)");color:@(profitGross >= 0 ? "#34d399" : "#f87171");">
+                        <i class="fas fa-chart-line fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Ganancia bruta (con IVA)</div>
+                        <div class="rep-kpi-value" style="color:@(profitGross >= 0 ? "#059669" : "#dc2626");">
+                            $@profitGross.ToString("N2")
+                        </div>
+                    </div>
+                </div>
+                <div class="rep-kpi">
+                    <div class="rep-kpi-icon" style="background:rgba(139,92,246,.15);color:#a78bfa;">
+                        <i class="fas fa-percent fa-xl"></i>
+                    </div>
+                    <div>
+                        <div class="rep-kpi-label fs-6">Margen bruto (con IVA)</div>
+                        <div class="rep-kpi-value" style="color:@(marginGross >= 0 ? "#059669" : "#dc2626");">
+                            @marginGross.ToString("N1")%
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="fs-6" style="color:var(--text-muted);margin-top:-.75rem;margin-bottom:1.2rem;">
+                <i class="fas fa-info-circle me-1"></i>El margen <strong>sin IVA</strong> es el indicador contable recomendado: el IVA cobrado no es ingreso propio, es un impuesto recaudado para el fisco.
+            </p>
+
+            <div class="rep-section-title fs-6">Detalle por producto</div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Categoría</th>
+                        <th>Producto</th>
+                        <th style="text-align:right;">Cant. vendida</th>
+                        <th style="text-align:right;">Ingreso (sin IVA)</th>
+                        <th style="text-align:right;">Costo total</th>
+                        <th style="text-align:right;">Ganancia</th>
+                        <th style="text-align:right;">Margen %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in _profitability)
+                    {
+                        <tr>
+                            <td class="fs-6" style="color:var(--text-muted);">@line.CategoryName</td>
+                            <td class="fs-6 fw-semibold">@line.ProductName</td>
+                            <td class="fs-6" style="text-align:right;">@line.TotalQty.ToString("N2")</td>
+                            <td class="fs-6" style="text-align:right;">$@line.TotalRevenue.ToString("N2")</td>
+                            <td class="fs-6" style="text-align:right;">$@line.TotalCost.ToString("N2")</td>
+                            <td class="fs-6 fw-semibold" style="text-align:right;color:@(line.GrossProfit >= 0 ? "#059669" : "#dc2626");">
+                                $@line.GrossProfit.ToString("N2")
+                            </td>
+                            <td class="fs-6" style="text-align:right;color:@(line.MarginPct >= 0 ? "#059669" : "#dc2626");">
+                                @line.MarginPct.ToString("N1")%
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight:700;border-top:2px solid var(--border);">
+                        <td colspan="3" class="fs-6">Total</td>
+                        <td class="fs-6" style="text-align:right;">$@totalRevenueNet.ToString("N2")</td>
+                        <td class="fs-6" style="text-align:right;">$@totalCOGS.ToString("N2")</td>
+                        <td class="fs-6" style="text-align:right;color:@(profitNet >= 0 ? "#059669" : "#dc2626");">$@profitNet.ToString("N2")</td>
+                        <td class="fs-6" style="text-align:right;color:@(marginNet >= 0 ? "#059669" : "#dc2626");">@marginNet.ToString("N1")%</td>
+                    </tr>
+                </tfoot>
+            </table>
+            <p class="fs-6" style="color:var(--text-muted);margin-top:.5rem;">
+                * El costo se calcula con el precio de costo actual de cada producto. El detalle por producto usa ingresos <strong>sin IVA</strong>.
+            </p>
+        }
+    }
+
+</div>
+
+<!-- ── Modal: Ticket desde Reportes ── -->
+@if (_showRepTicketModal && _repTicket != null)
+{
+    <div class="tr-overlay">
+        <div class="tr-modal" @onclick:stopPropagation id="rep-ticket-print-area">
+
+            <div class="tr-store">@_repTicket.StoreName</div>
+            <div class="tr-meta">
+                <span>@_repTicket.IssuedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                <span class="tr-folio">@_repTicket.TicketNumber</span>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_repTicket.ClientName))
+            {
+                <div class="tr-client">Cliente: @_repTicket.ClientName</div>
+            }
+            @if (!string.IsNullOrEmpty(_repTicket.OperatorName))
+            {
+                <div class="tr-client" style="font-size:.72rem;color:var(--text-muted);">
+                    Operador: @_repTicket.OperatorName
+                </div>
+            }
+
+            <div class="tr-divider"></div>
+
+            <table class="tr-items">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="tr-num">Cant</th>
+                        <th class="tr-num">P.Unit</th>
+                        <th class="tr-num">Importe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in _repTicket.Lines)
+                    {
+                        <tr>
+                            <td title="@line.Name">@line.Name</td>
+                            <td class="tr-num">@line.Qty.ToString("N2")</td>
+                            <td class="tr-num">@_repTicket.Currency@line.UnitPrice.ToString("N2")</td>
+                            <td class="tr-num">@_repTicket.Currency@line.Subtotal.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="tr-divider"></div>
+
+            <div class="tr-totals">
+                <div class="tr-total-row">
+                    <span>Subtotal</span>
+                    <span>@_repTicket.Currency@_repTicket.Subtotal.ToString("N2")</span>
+                </div>
+                <div class="tr-total-row">
+                    <span>Impuesto</span>
+                    <span>@_repTicket.Currency@_repTicket.TaxAmount.ToString("N2")</span>
+                </div>
+                <div class="tr-total-row tr-total-main">
+                    <span>TOTAL</span>
+                    <span>@_repTicket.Currency@_repTicket.Total.ToString("N2")</span>
+                </div>
+                @if (!_repTicket.IsCredit)
+                {
+                    <div class="tr-total-row">
+                        <span>@_repTicket.PaymentMethod</span>
+                        <span>@_repTicket.Currency@_repTicket.AmountPaid.ToString("N2")</span>
+                    </div>
+                    <div class="tr-total-row">
+                        <span>Cambio</span>
+                        <span>@_repTicket.Currency@_repTicket.Change.ToString("N2")</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="tr-credit-badge">
+                        <i class="fas fa-handshake fa-xl me-1"></i>Venta a crédito
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(_repTicket.Footer))
+            {
+                <div class="tr-divider"></div>
+                <div class="tr-footer-text">@_repTicket.Footer</div>
+            }
+
+            <div class="tr-actions no-print">
+                <button class="abtn abtn-sky" onclick="window.print()">
+                    <i class="fas fa-print fa-xl"></i> Imprimir
+                </button>
+                <button class="abtn abtn-green" @onclick="() => _showRepTicketModal = false">
+                    <i class="fas fa-check fa-xl"></i> Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    private DateTime _from      = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _to        = DateTime.Today;
+    private string   _activeTab = "resumen";
+    private bool     _loading   = false;
+    private bool     _generated = false;
+
+    private SalesSummaryReport?         _summary            = null;
+    private List<TopProductLine>        _topProducts        = new();
+    private List<OperatorSalesLine>     _operatorSales      = new();
+    private List<SaleListLine>          _saleList           = new();
+    private List<CashMovementListItem>  _movements          = new();
+    private List<ProductCategoryGroup>  _productsByCategory = new();
+    private List<PurchaseLineDTO>       _reportPurchases    = new();
+    private List<ProfitabilityLine>     _profitability      = new();
+    private bool                        _downloadingReport  = false;
+
+    // Ticket modal (Tickets tab)
+    private bool         _showRepTicketModal = false;
+    private bool         _loadingTicket      = false;
+    private long         _loadingTicketId    = 0;
+    private RepTicketVM? _repTicket          = null;
+    private string       _currencySymbol     = "$";
+    private string       _ticketFooter       = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var configs = await configRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        string GetCfg(string key) => configs.FirstOrDefault(c => c.ConfigKey == key)?.Value ?? "";
+        _currencySymbol = GetCfg("currency_symbol") is { Length: > 0 } s ? s : "$";
+        _ticketFooter   = GetCfg("ticket_footer");
+    }
+
+    private async Task GenerateAsync()
+    {
+        if (_from > _to) return;
+        _loading = true;
+        try
+        {
+            long storeId = posSessionService.StoreId;
+            var t1 = saleRepository.GetSalesSummaryAsync(storeId, _from, _to);
+            var t2 = saleRepository.GetTopProductsAsync(storeId, _from, _to);
+            var t3 = saleRepository.GetSalesByOperatorAsync(storeId, _from, _to);
+            var t4 = saleRepository.GetSalesByDateRangeAsync(storeId, _from, _to);
+            var t5 = cashMovementRepository.GetByStoreAndPeriodAsync(storeId, _from, _to.Date.AddDays(1));
+            var t6 = saleRepository.GetProductsByCategoryAsync(storeId, _from, _to.Date.AddDays(1));
+            var t7 = purchaseRepository.GetByPeriodAsync(storeId, _from, _to);
+            var t8 = saleRepository.GetProfitabilityAsync(storeId, _from, _to.Date.AddDays(1));
+            await Task.WhenAll(t1, t2, t3, t4, t5, t6, t7, t8);
+            _summary            = t1.Result;
+            _topProducts        = t2.Result;
+            _operatorSales      = t3.Result;
+            _saleList           = t4.Result;
+            _movements          = t5.Result;
+            _productsByCategory = t6.Result;
+            _reportPurchases    = t7.Result;
+            _profitability      = t8.Result;
+            _generated          = true;
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenSaleTicketAsync(SaleListLine line)
+    {
+        _loadingTicket   = true;
+        _loadingTicketId = line.SaleId;
+        try
+        {
+            var sale    = await saleRepository.GetOneBySaleIdAsync(line.SaleId);
+            if (sale == null) return;
+            var details = await saleRepository.GetDetailsBySaleIdAsync(line.SaleId);
+            var pmName  = await saleRepository.GetPaymentMethodNameBySaleIdAsync(line.SaleId);
+
+            _repTicket = new RepTicketVM
+            {
+                StoreName     = posSessionService.StoreName,
+                TicketNumber  = sale.TicketNumber,
+                IssuedAt      = sale.SaleDate,
+                OperatorName  = line.OperatorName,
+                ClientName    = line.ClientName,
+                PaymentMethod = pmName,
+                AmountPaid    = sale.AmountPaid,
+                Change        = sale.Change,
+                Subtotal      = sale.Subtotal,
+                TaxAmount     = sale.TaxAmount,
+                Total         = sale.Total,
+                Footer        = _ticketFooter,
+                Currency      = _currencySymbol,
+                IsCredit      = line.IsCredit,
+                Lines         = details.Select(d => new RepTicketLineVM
+                {
+                    Name      = d.ProductNameSnapshot,
+                    Qty       = d.Quantity,
+                    UnitPrice = d.UnitPrice,
+                    Subtotal  = d.Subtotal,
+                }).ToList(),
+            };
+            _showRepTicketModal = true;
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loadingTicket   = false;
+            _loadingTicketId = 0;
+        }
+    }
+
+    private void SetRange(int days)
+    {
+        _to   = DateTime.Today;
+        _from = days == 0 ? DateTime.Today : DateTime.Today.AddDays(-days + 1);
+    }
+
+    private void SetThisMonth()
+    {
+        _from = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        _to   = DateTime.Today;
+    }
+
+    private static string GetPaymentIcon(string name) => name.ToLower() switch
+    {
+        var n when n.Contains("efectivo")  => "fa-money-bill-wave",
+        var n when n.Contains("tarjeta")   => "fa-credit-card",
+        var n when n.Contains("transfer")  => "fa-exchange-alt",
+        var n when n.Contains("vale")      => "fa-ticket-alt",
+        _                                  => "fa-coins"
+    };
+
+    private class RepTicketVM
+    {
+        public string   StoreName     { get; set; } = "";
+        public string   TicketNumber  { get; set; } = "";
+        public DateTime IssuedAt      { get; set; }
+        public string   OperatorName  { get; set; } = "";
+        public string   ClientName    { get; set; } = "";
+        public string   PaymentMethod { get; set; } = "";
+        public decimal  AmountPaid    { get; set; }
+        public decimal  Change        { get; set; }
+        public decimal  Subtotal      { get; set; }
+        public decimal  TaxAmount     { get; set; }
+        public decimal  Total         { get; set; }
+        public string   Footer        { get; set; } = "";
+        public string   Currency      { get; set; } = "$";
+        public bool     IsCredit      { get; set; }
+        public List<RepTicketLineVM> Lines { get; set; } = new();
+    }
+
+    private class RepTicketLineVM
+    {
+        public string  Name      { get; set; } = "";
+        public decimal Qty       { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal Subtotal  { get; set; }
+    }
+
+    private async Task DownloadReportAsync()
+    {
+        _downloadingReport = true;
+        try
+        {
+            string html = BuildReportHtml();
+            await IJSRuntime.InvokeVoidAsync("reportHelper.openAndPrint", html);
+        }
+        finally
+        {
+            _downloadingReport = false;
+        }
+    }
+
+    private string BuildReportHtml()
+    {
+        if (_summary == null) return "<html><body>Sin datos</body></html>";
+        var sb = new StringBuilder();
+        string H(string s) => System.Net.WebUtility.HtmlEncode(s);
+        string storeName   = H(posSessionService.StoreName);
+        string period      = $"{_from:dd/MM/yyyy} — {_to:dd/MM/yyyy}";
+        string generatedAt = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+
+        sb.Append("<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>");
+        sb.Append("<title>Informe de Ventas — ").Append(storeName).Append("</title><style>");
+        sb.Append("*{box-sizing:border-box;margin:0;padding:0;}");
+        sb.Append("body{font-family:'Segoe UI',Arial,sans-serif;background:#f8fafc;color:#1e293b;padding:24px;}");
+        sb.Append(".rpt{max-width:900px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.12);padding:32px;}");
+        sb.Append(".rpt-header{text-align:center;margin-bottom:24px;border-bottom:2px solid #e2e8f0;padding-bottom:16px;}");
+        sb.Append(".rpt-store{font-size:1.4rem;font-weight:700;color:#1e40af;}");
+        sb.Append(".rpt-title{font-size:1.1rem;color:#475569;margin-top:4px;}");
+        sb.Append(".rpt-period{font-size:.95rem;color:#64748b;margin-top:6px;}");
+        sb.Append(".rpt-gen{font-size:.8rem;color:#94a3b8;margin-top:4px;}");
+        sb.Append(".kpi-row{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0;}");
+        sb.Append(".kpi{flex:1;min-width:130px;background:#f1f5f9;border-radius:8px;padding:14px;text-align:center;}");
+        sb.Append(".kpi-label{font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;}");
+        sb.Append(".kpi-val{font-size:1.35rem;font-weight:700;color:#1e293b;margin-top:4px;}");
+        sb.Append(".section{margin-top:24px;}");
+        sb.Append(".sec-title{font-size:1rem;font-weight:700;color:#1e40af;padding:8px 12px;background:#eff6ff;border-left:4px solid #3b82f6;border-radius:4px;margin-bottom:10px;}");
+        sb.Append("table{width:100%;border-collapse:collapse;font-size:.88rem;}");
+        sb.Append("th{background:#f1f5f9;color:#475569;text-align:left;padding:8px 10px;border-bottom:2px solid #e2e8f0;}");
+        sb.Append("td{padding:7px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}");
+        sb.Append("tr:last-child td{border-bottom:none;}");
+        sb.Append(".num{text-align:right;}.bold{font-weight:700;}");
+        sb.Append(".badge-in{display:inline-block;background:#dcfce7;color:#166534;border-radius:4px;padding:2px 8px;font-size:.8rem;font-weight:600;}");
+        sb.Append(".badge-out{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:4px;padding:2px 8px;font-size:.8rem;font-weight:600;}");
+        sb.Append(".badge-cr{display:inline-block;background:#ede9fe;color:#5b21b6;border-radius:4px;padding:2px 6px;font-size:.78rem;}");
+        sb.Append(".cat-hdr{background:#eff6ff;color:#1e40af;font-weight:700;padding:7px 12px;border-radius:4px;margin-top:10px;margin-bottom:4px;display:flex;justify-content:space-between;}");
+        sb.Append(".grand-total{text-align:right;font-weight:700;font-size:.95rem;padding:9px 12px;background:#f8fafc;border-top:2px solid #e2e8f0;margin-top:6px;}");
+        sb.Append(".empty{color:#94a3b8;font-style:italic;padding:8px 0;}");
+        sb.Append("@media print{body{padding:0;background:#fff;}.rpt{box-shadow:none;padding:16px;}}");
+        sb.Append("</style></head><body><div class='rpt'>");
+
+        // Header
+        sb.Append("<div class='rpt-header'>")
+          .Append("<div class='rpt-store'>").Append(storeName).Append("</div>")
+          .Append("<div class='rpt-title'>Informe de Ventas</div>")
+          .Append("<div class='rpt-period'>Período: ").Append(H(period)).Append("</div>")
+          .Append("<div class='rpt-gen'>Generado: ").Append(H(generatedAt)).Append("</div>")
+          .Append("</div>");
+
+        // KPIs
+        decimal movIn  = _movements.Where(m => m.Type == "IN").Sum(m => m.Amount);
+        decimal movOut = _movements.Where(m => m.Type == "OUT").Sum(m => m.Amount);
+        sb.Append("<div class='kpi-row'>")
+          .Append("<div class='kpi'><div class='kpi-label'>Total vendido</div><div class='kpi-val'>$").Append(_summary.TotalRevenue.ToString("N2")).Append("</div></div>")
+          .Append("<div class='kpi'><div class='kpi-label'>N° de ventas</div><div class='kpi-val'>").Append(_summary.SalesCount).Append("</div></div>")
+          .Append("<div class='kpi'><div class='kpi-label'>Ticket promedio</div><div class='kpi-val'>$").Append(_summary.AverageTicket.ToString("N2")).Append("</div></div>");
+        if (_movements.Any())
+        {
+            sb.Append("<div class='kpi'><div class='kpi-label'>Entradas efectivo</div><div class='kpi-val' style='color:#059669;'>$").Append(movIn.ToString("N2")).Append("</div></div>")
+              .Append("<div class='kpi'><div class='kpi-label'>Salidas efectivo</div><div class='kpi-val' style='color:#dc2626;'>$").Append(movOut.ToString("N2")).Append("</div></div>");
+        }
+        if (_reportPurchases.Any())
+        {
+            decimal purchConfirmedTotal = _reportPurchases.Where(p => p.IsConfirmed).Sum(p => p.Total);
+            sb.Append("<div class='kpi'><div class='kpi-label'>Compras a proveedores</div><div class='kpi-val' style='color:#d97706;'>$").Append(purchConfirmedTotal.ToString("N2")).Append("</div></div>");
+        }
+        sb.Append("</div>");
+
+        // Payment methods
+        sb.Append("<div class='section'><div class='sec-title'>Desglose por método de pago</div>");
+        if (_summary.ByPaymentMethod.Any())
+        {
+            sb.Append("<table><thead><tr><th>Método</th><th class='num'>Transacciones</th><th class='num'>Total</th><th class='num'>%</th></tr></thead><tbody>");
+            foreach (var pm in _summary.ByPaymentMethod.OrderByDescending(p => p.Total))
+            {
+                decimal pct = _summary.TotalRevenue > 0 ? Math.Round(pm.Total / _summary.TotalRevenue * 100, 1) : 0;
+                sb.Append("<tr><td>").Append(H(pm.MethodName)).Append("</td>")
+                  .Append("<td class='num'>").Append(pm.Count).Append("</td>")
+                  .Append("<td class='num bold'>$").Append(pm.Total.ToString("N2")).Append("</td>")
+                  .Append("<td class='num'>").Append(pct).Append("%</td></tr>");
+            }
+            sb.Append("</tbody></table>");
+        }
+        else { sb.Append("<div class='empty'>Sin datos de pago.</div>"); }
+        sb.Append("</div>");
+
+        // Cash movements
+        if (_movements.Any())
+        {
+            sb.Append("<div class='section'><div class='sec-title'>Movimientos de efectivo</div>");
+            sb.Append("<table><thead><tr><th>Tipo</th><th>Fecha</th><th>Concepto</th><th>Operador</th><th class='num'>Importe</th></tr></thead><tbody>");
+            foreach (var m in _movements)
+            {
+                string badge = m.Type == "IN" ? "<span class='badge-in'>Entrada</span>" : "<span class='badge-out'>Salida</span>";
+                string sign  = m.Type == "IN" ? "+" : "−";
+                string clr   = m.Type == "IN" ? "color:#059669;" : "color:#dc2626;";
+                sb.Append("<tr><td>").Append(badge).Append("</td>")
+                  .Append("<td>").Append(H(m.MovementDate.ToString("dd/MM/yyyy HH:mm"))).Append("</td>")
+                  .Append("<td>").Append(H(m.Reason)).Append("</td>")
+                  .Append("<td>").Append(H(m.OperatorName)).Append("</td>")
+                  .Append("<td class='num bold' style='").Append(clr).Append("'>").Append(sign).Append("$").Append(m.Amount.ToString("N2")).Append("</td></tr>");
+            }
+            sb.Append("</tbody></table></div>");
+        }
+
+        // Purchases
+        if (_reportPurchases.Any())
+        {
+            int     totalPurch     = _reportPurchases.Count;
+            int     confirmedPurch = _reportPurchases.Count(p => p.IsConfirmed);
+            int     pendingPurch   = totalPurch - confirmedPurch;
+            decimal totalSpent     = _reportPurchases.Sum(p => p.Total);
+            decimal confirmedSpent = _reportPurchases.Where(p => p.IsConfirmed).Sum(p => p.Total);
+
+            sb.Append("<div class='section'><div class='sec-title'>Compras a proveedores (").Append(totalPurch).Append(")</div>");
+            sb.Append("<table><thead><tr><th>Fecha</th><th>Proveedor</th><th>N° factura</th><th class='num'>Subtotal</th><th class='num'>IVA</th><th class='num'>Total</th><th>Estado</th></tr></thead><tbody>");
+            foreach (var p in _reportPurchases)
+            {
+                string statusBadge = p.IsConfirmed
+                    ? "<span class='badge-in'>Confirmada</span>"
+                    : "<span class='badge-out'>Pendiente</span>";
+                sb.Append("<tr>")
+                  .Append("<td>").Append(H(p.PurchaseDate.ToString("dd/MM/yyyy"))).Append("</td>")
+                  .Append("<td>").Append(H(p.SupplierName)).Append("</td>")
+                  .Append("<td>").Append(H(p.SupplierInvoice ?? "—")).Append("</td>")
+                  .Append("<td class='num'>$").Append(p.Subtotal.ToString("N2")).Append("</td>")
+                  .Append("<td class='num'>$").Append(p.TaxAmount.ToString("N2")).Append("</td>")
+                  .Append("<td class='num bold'>$").Append(p.Total.ToString("N2")).Append("</td>")
+                  .Append("<td>").Append(statusBadge).Append("</td>")
+                  .Append("</tr>");
+            }
+            sb.Append("<tr><td colspan='5' style='font-size:.82rem;color:#64748b;'>")
+              .Append(confirmedPurch).Append(" confirmada").Append(confirmedPurch != 1 ? "s" : "")
+              .Append(" ($").Append(confirmedSpent.ToString("N2")).Append(") · ")
+              .Append(pendingPurch).Append(" pendiente").Append(pendingPurch != 1 ? "s" : "")
+              .Append("</td><td class='num bold'>$").Append(totalSpent.ToString("N2")).Append("</td><td></td></tr>");
+            sb.Append("</tbody></table></div>");
+        }
+
+        // Products by category
+        if (_productsByCategory.Any())
+        {
+            decimal grandTotal = _productsByCategory.Sum(g => g.Lines.Sum(l => l.TotalSubtotal));
+            sb.Append("<div class='section'><div class='sec-title'>Productos vendidos por categoría</div>");
+            foreach (var cat in _productsByCategory)
+            {
+                decimal catTotal = cat.Lines.Sum(l => l.TotalSubtotal);
+                sb.Append("<div class='cat-hdr'><span>").Append(H(cat.CategoryName)).Append("</span><span>$").Append(catTotal.ToString("N2")).Append("</span></div>");
+                sb.Append("<table><thead><tr><th>Producto</th><th class='num'>Cantidad</th><th class='num'>Importe</th></tr></thead><tbody>");
+                foreach (var line in cat.Lines)
+                {
+                    sb.Append("<tr><td>").Append(H(line.ProductName)).Append("</td>")
+                      .Append("<td class='num'>").Append(line.TotalQty.ToString("N2")).Append("</td>")
+                      .Append("<td class='num bold'>$").Append(line.TotalSubtotal.ToString("N2")).Append("</td></tr>");
+                }
+                sb.Append("</tbody></table>");
+            }
+            sb.Append("<div class='grand-total'>Total general: $").Append(grandTotal.ToString("N2")).Append("</div></div>");
+        }
+
+        // Top products
+        if (_topProducts.Any())
+        {
+            sb.Append("<div class='section'><div class='sec-title'>Top 20 productos más vendidos</div>");
+            sb.Append("<table><thead><tr><th>#</th><th>Producto</th><th class='num'>Unidades</th><th class='num'>Importe</th></tr></thead><tbody>");
+            int rank = 1;
+            foreach (var p in _topProducts)
+            {
+                sb.Append("<tr><td>").Append(rank).Append("</td>")
+                  .Append("<td>").Append(H(p.ProductName)).Append("</td>")
+                  .Append("<td class='num'>").Append(p.UnitsSold.ToString("N2")).Append("</td>")
+                  .Append("<td class='num bold'>$").Append(p.Revenue.ToString("N2")).Append("</td></tr>");
+                rank++;
+            }
+            sb.Append("</tbody></table></div>");
+        }
+
+        // Operators
+        if (_operatorSales.Any())
+        {
+            sb.Append("<div class='section'><div class='sec-title'>Ventas por operador</div>");
+            sb.Append("<table><thead><tr><th>Operador</th><th class='num'>N° ventas</th><th class='num'>Total vendido</th><th class='num'>Ticket promedio</th></tr></thead><tbody>");
+            foreach (var op in _operatorSales)
+            {
+                decimal avg = op.SalesCount > 0 ? Math.Round(op.TotalSold / op.SalesCount, 2) : 0;
+                sb.Append("<tr><td>").Append(H(op.OperatorName)).Append("</td>")
+                  .Append("<td class='num'>").Append(op.SalesCount).Append("</td>")
+                  .Append("<td class='num bold'>$").Append(op.TotalSold.ToString("N2")).Append("</td>")
+                  .Append("<td class='num'>$").Append(avg.ToString("N2")).Append("</td></tr>");
+            }
+            sb.Append("</tbody></table></div>");
+        }
+
+        // Sales list
+        if (_saleList.Any())
+        {
+            sb.Append("<div class='section'><div class='sec-title'>Listado de ventas (").Append(_saleList.Count).Append(")</div>");
+            sb.Append("<table><thead><tr><th>Ticket</th><th>Fecha</th><th>Operador</th><th>Cliente</th><th class='num'>Total</th></tr></thead><tbody>");
+            foreach (var s in _saleList)
+            {
+                sb.Append("<tr><td>").Append(H(s.TicketNumber)).Append("</td>")
+                  .Append("<td>").Append(H(s.SaleDate.ToString("dd/MM/yyyy HH:mm"))).Append("</td>")
+                  .Append("<td>").Append(H(s.OperatorName)).Append("</td>")
+                  .Append("<td>").Append(H(string.IsNullOrWhiteSpace(s.ClientName) ? "—" : s.ClientName)).Append("</td>")
+                  .Append("<td class='num bold'>$").Append(s.Total.ToString("N2"));
+                if (s.IsCredit) sb.Append(" <span class='badge-cr'>Crédito</span>");
+                sb.Append("</td></tr>");
+            }
+            sb.Append("</tbody></table></div>");
+        }
+
+        // Profitability
+        if (_profitability.Any())
+        {
+            decimal pRevenueGross = _summary?.TotalRevenue    ?? 0;   // Ventas con IVA
+            decimal pRevenueNet   = _summary?.TotalRevenueNet ?? 0;   // Ventas sin IVA
+            decimal pCOGS         = _profitability.Sum(l => l.TotalCost);
+            decimal pProfitNet    = pRevenueNet   - pCOGS;
+            decimal pMarginNet    = pRevenueNet   > 0 ? Math.Round(pProfitNet   / pRevenueNet   * 100, 1) : 0;
+            decimal pProfitGross  = pRevenueGross - pCOGS;
+            decimal pMarginGross  = pRevenueGross > 0 ? Math.Round(pProfitGross / pRevenueGross * 100, 1) : 0;
+            string  pColorNet     = pProfitNet   >= 0 ? "#059669" : "#dc2626";
+            string  pColorGross   = pProfitGross >= 0 ? "#059669" : "#dc2626";
+
+            sb.Append("<div class='section'><div class='sec-title'>Rentabilidad del período (COGS)</div>");
+            sb.Append("<div class='kpi-row'>")
+              .Append("<div class='kpi'><div class='kpi-label'>Ventas con IVA</div><div class='kpi-val'>$").Append(pRevenueGross.ToString("N2")).Append("</div></div>")
+              .Append("<div class='kpi'><div class='kpi-label'>Ventas sin IVA</div><div class='kpi-val'>$").Append(pRevenueNet.ToString("N2")).Append("</div></div>")
+              .Append("<div class='kpi'><div class='kpi-label'>Costo de ventas (COGS)</div><div class='kpi-val' style='color:#dc2626;'>$").Append(pCOGS.ToString("N2")).Append("</div></div>")
+              .Append("<div class='kpi'><div class='kpi-label'>Ganancia bruta (sin IVA)</div><div class='kpi-val' style='color:").Append(pColorNet).Append(";'>$").Append(pProfitNet.ToString("N2")).Append("</div></div>")
+              .Append("<div class='kpi'><div class='kpi-label'>Margen bruto (sin IVA)</div><div class='kpi-val' style='color:").Append(pColorNet).Append(";'>").Append(pMarginNet.ToString("N1")).Append("%</div></div>")
+              .Append("<div class='kpi'><div class='kpi-label'>Ganancia bruta (con IVA)</div><div class='kpi-val' style='color:").Append(pColorGross).Append(";'>$").Append(pProfitGross.ToString("N2")).Append("</div></div>")
+              .Append("<div class='kpi'><div class='kpi-label'>Margen bruto (con IVA)</div><div class='kpi-val' style='color:").Append(pColorGross).Append(";'>").Append(pMarginGross.ToString("N1")).Append("%</div></div>")
+              .Append("</div>");
+
+            sb.Append("<table><thead><tr><th>Categoría</th><th>Producto</th><th class='num'>Cant.</th><th class='num'>Ingreso (sin IVA)</th><th class='num'>COGS</th><th class='num'>Ganancia</th><th class='num'>Margen</th></tr></thead><tbody>");
+            foreach (var line in _profitability)
+            {
+                string lColor = line.GrossProfit >= 0 ? "#059669" : "#dc2626";
+                sb.Append("<tr>")
+                  .Append("<td style='color:#64748b;'>").Append(H(line.CategoryName)).Append("</td>")
+                  .Append("<td>").Append(H(line.ProductName)).Append("</td>")
+                  .Append("<td class='num'>").Append(line.TotalQty.ToString("N2")).Append("</td>")
+                  .Append("<td class='num'>$").Append(line.TotalRevenue.ToString("N2")).Append("</td>")
+                  .Append("<td class='num'>$").Append(line.TotalCost.ToString("N2")).Append("</td>")
+                  .Append("<td class='num bold' style='color:").Append(lColor).Append(";'>$").Append(line.GrossProfit.ToString("N2")).Append("</td>")
+                  .Append("<td class='num' style='color:").Append(lColor).Append(";'>").Append(line.MarginPct.ToString("N1")).Append("%</td>")
+                  .Append("</tr>");
+            }
+            sb.Append("<tr><td colspan='3' class='bold'>Total</td>")
+              .Append("<td class='num bold'>$").Append(pRevenueNet.ToString("N2")).Append("</td>")
+              .Append("<td class='num bold'>$").Append(pCOGS.ToString("N2")).Append("</td>")
+              .Append("<td class='num bold' style='color:").Append(pColorNet).Append(";'>$").Append(pProfitNet.ToString("N2")).Append("</td>")
+              .Append("<td class='num bold' style='color:").Append(pColorNet).Append(";'>").Append(pMarginNet.ToString("N1")).Append("%</td></tr>");
+            sb.Append("</tbody></table>");
+            sb.Append("<div class='empty' style='font-size:.75rem;'>* Costo calculado con el precio de costo actual de cada producto. El margen sin IVA es el indicador contable recomendado.</div>");
+            sb.Append("</div>");
+        }
+
+        // Footer
+        sb.Append("<div style='text-align:center;color:#94a3b8;font-size:.78rem;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;'>")
+          .Append("Generado por FiyiPOS — ").Append(H(generatedAt))
+          .Append("</div></div></body></html>");
+
+        return sb.ToString();
+    }
+}

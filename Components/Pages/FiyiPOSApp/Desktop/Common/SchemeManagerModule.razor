@@ -1,0 +1,387 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+
+@inject ConfigRepository configRepository
+@inject PosSessionService posSessionService
+@inject IJSRuntime JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:.75rem;">
+        <div style="display:flex; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
+            <div>
+                <div class="header-title">ESQUEMA DE COLORES</div>
+                <div class="header-sub">
+                    Personaliza los colores de tu sucursal. Los cambios se aplican en tiempo real.
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;">
+            <select class="scm-theme-select fs-6" @bind="_selectedTheme" @bind:after="OnThemeSwitchAsync">
+                <option value="light">Tema claro</option>
+                <option value="dark">Tema oscuro</option>
+            </select>
+            <button class="abtn abtn-gray" @onclick="ResetToDefaults" disabled="@_saving">
+                <i class="fas fa-undo"></i> Restaurar defaults
+            </button>
+            <button class="abtn abtn-blue" @onclick="SaveAsync" disabled="@(!_dirty || _saving)">
+                <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                @(_saving ? "Guardando..." : "Guardar y aplicar")
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="empty-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>Cargando esquema de colores...</p>
+    </div>
+}
+else
+{
+    <div class="scm-layout">
+
+        <!-- ── LEFT: color sections ── -->
+        <div class="scm-sections">
+            @foreach (var grp in _sections)
+            {
+                <div class="scm-section">
+                    <div class="scm-section-title">@grp.Title</div>
+                    <div class="scm-section-desc">@grp.Description</div>
+                    @foreach (var (key, label) in grp.Colors)
+                    {
+                        var themedKey = key.Replace("pos_", ThemePrefix);
+                        if (_vars.TryGetValue(themedKey, out var val))
+                        {
+                            <div class="scm-row">
+                                <span class="scm-row-label">@label</span>
+                                <input type="color"
+                                       class="scm-color-swatch"
+                                       value="@val"
+                                       @oninput="e => OnColorInput(themedKey, e.Value?.ToString() ?? string.Empty)" />
+                                <input type="text"
+                                       class="scm-hex-input"
+                                       value="@val"
+                                       maxlength="7"
+                                       placeholder="#000000"
+                                       @onchange="e => OnHexChange(themedKey, e.Value?.ToString() ?? string.Empty)" />
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- ── RIGHT: sidebar ── -->
+        <aside class="scm-sidebar">
+
+            <!-- Live preview -->
+            <div class="scm-panel">
+                <div class="scm-panel-title">Vista previa en tiempo real</div>
+                <div class="scm-preview-frame">
+                    <div class="scm-pv-nav">
+                        <span class="scm-pv-nav-brand">FiyiPOS</span>
+                        <span class="scm-pv-nav-chip">Mi Sucursal</span>
+                    </div>
+                    <div class="scm-pv-body">
+                        <div class="scm-pv-stats">
+                            <div class="scm-pv-stat">
+                                <div class="scm-pv-stat-lbl">Ventas</div>
+                                <div class="scm-pv-stat-val v-primary">$1,240</div>
+                            </div>
+                            <div class="scm-pv-stat">
+                                <div class="scm-pv-stat-lbl">Clientes</div>
+                                <div class="scm-pv-stat-val v-success">48</div>
+                            </div>
+                            <div class="scm-pv-stat">
+                                <div class="scm-pv-stat-lbl">Alertas</div>
+                                <div class="scm-pv-stat-val v-danger">3</div>
+                            </div>
+                        </div>
+                        <div class="scm-pv-card">
+                            <div class="scm-pv-card-hdr">Operaciones recientes</div>
+                            <div class="scm-pv-row">
+                                <span>Producto A</span>
+                                <span class="scm-pv-pill ok">Activo</span>
+                            </div>
+                            <div class="scm-pv-row">
+                                <span>Producto B</span>
+                                <span class="scm-pv-pill err">Inactivo</span>
+                            </div>
+                            <div class="scm-pv-row">
+                                <span>Producto C</span>
+                                <span class="scm-pv-pill ok">Activo</span>
+                            </div>
+                        </div>
+                        <div class="scm-pv-actions">
+                            <button class="scm-pv-btn primary">Guardar</button>
+                            <button class="scm-pv-btn outline">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick presets -->
+            <div class="scm-panel">
+                <div class="scm-panel-title">Presets rápidos</div>
+                <div class="scm-presets-grid">
+                    @{
+                        var primaryKey     = $"pos_{_selectedTheme}_primary";
+                        var currentPrimary = _vars.TryGetValue(primaryKey, out var cp) ? cp : "";
+                    }
+                    @foreach (var preset in _presets)
+                    {
+                        var p        = preset;
+                        var match    = _selectedTheme == "light" ? p.LP : p.DP;
+                        var isActive = string.Equals(currentPrimary, match, StringComparison.OrdinalIgnoreCase);
+                        <button class="scm-preset-dot @(isActive ? "scm-preset-dot-active" : "")"
+                                style="background: @p.Color"
+                                title="@p.Label"
+                                @onclick="() => ApplyPreset(p)">
+                        </button>
+                    }
+                </div>
+            </div>
+
+        </aside>
+    </div>
+}
+
+@code {
+
+    private bool   _loading = true;
+    private bool   _saving  = false;
+    private string _selectedTheme = "light";
+
+    private Dictionary<string, string> _vars  = new();
+    private Dictionary<string, string> _saved = new();
+
+    private string ThemePrefix => $"pos_{_selectedTheme}_";
+
+    private bool _dirty => _vars.Any(kv =>
+        kv.Key.StartsWith(ThemePrefix) &&
+        _saved.TryGetValue(kv.Key, out var s) && s != kv.Value);
+
+    // ── Defaults ───────────────────────────────────────────
+    private static readonly Dictionary<string, string> _lightDefaults = new()
+    {
+        ["pos_light_bg"]            = "#f0faf5",
+        ["pos_light_surface"]       = "#ffffff",
+        ["pos_light_primary"]       = "#1aacb1",
+        ["pos_light_primary_dark"]  = "#148a8e",
+        ["pos_light_primary_light"] = "#22c9ce",
+        ["pos_light_primary_muted"] = "#d4f4f5",
+        ["pos_light_text"]          = "#3A4656",
+        ["pos_light_text_muted"]    = "#64748b",
+        ["pos_light_border"]        = "#e2e8f0",
+        ["pos_light_success"]       = "#4CAF50",
+        ["pos_light_success_dark"]  = "#3d8b40",
+        ["pos_light_warning"]       = "#f59e0b",
+        ["pos_light_danger"]        = "#ef4444",
+    };
+
+    private static readonly Dictionary<string, string> _darkDefaults = new()
+    {
+        ["pos_dark_bg"]            = "#0f172a",
+        ["pos_dark_surface"]       = "#1e293b",
+        ["pos_dark_primary"]       = "#1aacb1",
+        ["pos_dark_primary_dark"]  = "#148a8e",
+        ["pos_dark_primary_light"] = "#22c9ce",
+        ["pos_dark_primary_muted"] = "#1a3a3b",
+        ["pos_dark_text"]          = "#0be0dc",
+        ["pos_dark_text_muted"]    = "#94b8b7",
+        ["pos_dark_border"]        = "#00fbff",
+        ["pos_dark_success"]       = "#32dc38",
+        ["pos_dark_success_dark"]  = "#3aa13e",
+        ["pos_dark_warning"]       = "#ffa200",
+        ["pos_dark_danger"]        = "#ff0000",
+    };
+
+    // ── Section definitions (use base keys; theme prefix applied at render) ──
+    private static readonly (string Title, string Description, (string Key, string Label)[] Colors)[] _sections =
+    [
+        ("Página & Cards", "Fondos generales del área de contenido",
+            [("pos_bg", "Fondo general"), ("pos_surface", "Fondo de cards y tablas")]),
+        ("Texto", "Colores tipográficos del sistema",
+            [("pos_text", "Texto principal"), ("pos_text_muted", "Texto secundario")]),
+        ("Color Primario", "Botones, links, badges y accentos",
+            [("pos_primary",       "Primario"),
+             ("pos_primary_dark",  "Primario oscuro"),
+             ("pos_primary_light", "Primario claro"),
+             ("pos_primary_muted", "Primario suave")]),
+        ("Bordes", "Divisores, inputs y contornos de tabla",
+            [("pos_border", "Color de borde")]),
+        ("Estados", "Indicadores de éxito, alerta y error",
+            [("pos_success",      "Éxito"),
+             ("pos_success_dark", "Éxito oscuro"),
+             ("pos_warning",      "Alerta"),
+             ("pos_danger",       "Error / Inactivo")]),
+    ];
+
+    // ── Quick presets (change only the primary color group) ──
+    private record Preset(string Color, string Label,
+        string LP, string LPDark, string LPLight, string LPMuted,
+        string DP, string DPDark, string DPLight, string DPMuted);
+
+    private static readonly Preset[] _presets =
+    [
+        new("#1aacb1", "Teal",    "#1aacb1","#148a8e","#22c9ce","#d4f4f5", "#1aacb1","#148a8e","#22c9ce","#1a3a3b"),
+        new("#3b82f6", "Azul",    "#3b82f6","#2563eb","#60a5fa","#dbeafe", "#3b82f6","#2563eb","#60a5fa","#1e3a5f"),
+        new("#8b5cf6", "Violeta", "#8b5cf6","#7c3aed","#a78bfa","#ede9fe", "#8b5cf6","#7c3aed","#a78bfa","#2e1a5e"),
+        new("#16a34a", "Verde",   "#16a34a","#15803d","#22c55e","#dcfce7", "#22c55e","#16a34a","#4ade80","#14402a"),
+        new("#f97316", "Naranja", "#f97316","#ea580c","#fb923c","#ffedd5", "#f97316","#ea580c","#fb923c","#431407"),
+        new("#e11d48", "Rosa",    "#e11d48","#be123c","#fb7185","#ffe4e6", "#e11d48","#be123c","#fb7185","#4c0519"),
+    ];
+
+    // ── Lifecycle ───────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        var configs = await configRepository.GetSchemeVarsAsync(posSessionService.StoreId);
+
+        var activeThemeCfg = configs.FirstOrDefault(c => c.ConfigKey == "pos_active_theme");
+        if (activeThemeCfg != null)
+            _selectedTheme = activeThemeCfg.Value == "dark" ? "dark" : "light";
+
+        foreach (var c in configs.Where(c =>
+            c.ConfigKey.StartsWith("pos_light_") ||
+            c.ConfigKey.StartsWith("pos_dark_")))
+        {
+            _vars[c.ConfigKey]  = c.Value;
+            _saved[c.ConfigKey] = c.Value;
+        }
+
+        // Seed missing theme keys (existing stores without these keys)
+        var toAdd = new List<Config>();
+        foreach (var kvp in _lightDefaults.Concat(_darkDefaults))
+        {
+            if (!_vars.ContainsKey(kvp.Key))
+            {
+                _vars[kvp.Key] = _saved[kvp.Key] = kvp.Value;
+                toAdd.Add(new Config
+                {
+                    StoreId     = posSessionService.StoreId,
+                    ConfigKey   = kvp.Key,
+                    Value       = kvp.Value,
+                    Description = kvp.Key.Contains("_light_")
+                        ? $"Tema claro: {kvp.Key.Replace("pos_light_", "")}"
+                        : $"Tema oscuro: {kvp.Key.Replace("pos_dark_", "")}",
+                });
+            }
+        }
+
+        if (activeThemeCfg == null)
+            toAdd.Add(new Config
+            {
+                StoreId     = posSessionService.StoreId,
+                ConfigKey   = "pos_active_theme",
+                Value       = "light",
+                Description = "Tema activo del Scheme Manager: light o dark",
+            });
+
+        if (toAdd.Count > 0)
+            await configRepository.AddRangeAsync(toAdd);
+
+        _loading = false;
+    }
+
+    // ── Theme switch (apply live preview) ──────────────────
+    private async Task OnThemeSwitchAsync()
+    {
+        var prefix = ThemePrefix;
+        foreach (var kvp in _vars.Where(kv => kv.Key.StartsWith(prefix)))
+        {
+            var baseKey = kvp.Key.Replace(prefix, "pos_");
+            await JS.InvokeVoidAsync("schemeHelper.applyVar", baseKey, kvp.Value);
+        }
+    }
+
+    // ── Color pickers ──────────────────────────────────────
+    private async Task OnColorInput(string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        _vars[key] = value;
+        await JS.InvokeVoidAsync("schemeHelper.applyVar", key.Replace(ThemePrefix, "pos_"), value);
+    }
+
+    private async Task OnHexChange(string key, string value)
+    {
+        value = value.Trim().ToLowerInvariant();
+        if (!value.StartsWith('#') || value.Length != 7) return;
+        _vars[key] = value;
+        await JS.InvokeVoidAsync("schemeHelper.applyVar", key.Replace(ThemePrefix, "pos_"), value);
+    }
+
+    // ── Quick presets ───────────────────────────────────────
+    private async Task ApplyPreset(Preset p)
+    {
+        var (primary, pDark, pLight, pMuted) = _selectedTheme == "light"
+            ? (p.LP, p.LPDark, p.LPLight, p.LPMuted)
+            : (p.DP, p.DPDark, p.DPLight, p.DPMuted);
+
+        var updates = new[]
+        {
+            ($"pos_{_selectedTheme}_primary",       primary),
+            ($"pos_{_selectedTheme}_primary_dark",  pDark),
+            ($"pos_{_selectedTheme}_primary_light", pLight),
+            ($"pos_{_selectedTheme}_primary_muted", pMuted),
+        };
+
+        foreach (var (key, val) in updates)
+        {
+            _vars[key] = val;
+            await JS.InvokeVoidAsync("schemeHelper.applyVar", key.Replace(ThemePrefix, "pos_"), val);
+        }
+    }
+
+    // ── Restore / Save ─────────────────────────────────────
+    private async Task ResetToDefaults()
+    {
+        var defaults = _selectedTheme == "light" ? _lightDefaults : _darkDefaults;
+        foreach (var kvp in defaults)
+        {
+            _vars[kvp.Key] = kvp.Value;
+            await JS.InvokeVoidAsync("schemeHelper.applyVar", kvp.Key.Replace(ThemePrefix, "pos_"), kvp.Value);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            var prefix = ThemePrefix;
+
+            var themeVars = _vars
+                .Where(kv => kv.Key.StartsWith(prefix))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+            await configRepository.UpdateSchemeVarsAsync(posSessionService.StoreId, themeVars);
+
+            var baseVars = themeVars.ToDictionary(
+                kv => kv.Key.Replace(prefix, "pos_"),
+                kv => kv.Value);
+            await configRepository.UpdateSchemeVarsAsync(posSessionService.StoreId, baseVars);
+
+            await configRepository.UpdateSchemeVarsAsync(posSessionService.StoreId,
+                new Dictionary<string, string> { ["pos_active_theme"] = _selectedTheme });
+
+            foreach (var kv in themeVars)
+                _saved[kv.Key] = kv.Value;
+
+            var themeName = _selectedTheme == "light" ? "claro" : "oscuro";
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", $"Tema {themeName} guardado y aplicado correctamente.", "success");
+        }
+        catch
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Error", "No se pudo guardar el esquema.", "error");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

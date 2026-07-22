@@ -1,0 +1,1895 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.UnitBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ClientBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ClientBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SalePaymentBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PromotionBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PromotionBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
+@using FiyiPOS.Mailing
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Services.AFIP
+@using FiyiPOS.Services.AFIP.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Common.InvoiceBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.InvoiceBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.CompanySettingsBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.CompanySettingsBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
+
+@inject ProductRepository productRepository
+@inject UnitRepository unitRepository
+@inject ClientRepository clientRepository
+@inject PaymentMethodRepository paymentMethodRepository
+@inject SaleRepository saleRepository
+@inject CreditRepository creditRepository
+@inject ConfigRepository configRepository
+@inject PromotionRepository promotionRepository
+@inject PosSessionService posSessionService
+@inject HotkeyService hotkeyService
+@inject SystemUserRepository systemUserRepository
+@inject Email email
+@inject AfipFacturaElectronicaService afipFacturaElectronicaService
+@inject AfipQrService afipQrService
+@inject InvoiceRepository invoiceRepository
+@inject CompanySettingsRepository companySettingsRepository
+@inject CashMovementRepository cashMovementRepository
+@implements IDisposable
+
+<!-- ── Ticket banner ── -->
+<div class="ticket-banner">
+    <i class="fas fa-receipt"></i>
+    NUEVA VENTA
+</div>
+
+<!-- ── Barcode input ── -->
+<div class="input-row">
+    <div class="code-input-wrap">
+        <i class="fas fa-barcode" style="color: var(--primary-dark);"></i>
+        <label for="codeInput">CÓDIGO DEL PRODUCTO:</label>
+        <input id="codeInput" type="text" placeholder="Escanear o escribir código..." autofocus @bind="_codeInput"
+               @bind:event="oninput" @onkeydown="HandleKeyDown" />
+    </div>
+    <button class="abtn abtn-green" @onclick="AddProductAsync">
+        <i class="fas fa-plus-circle fa-xl"></i>
+        <span class="fs-6">Agregar Producto</span>
+        <span class="kbdx-inline fs-6">ENTER</span>
+    </button>
+</div>
+
+<!-- ── Tabs + Action buttons (same row) ── -->
+<div class="tabs-action-row">
+    <div class="ticket-tabs">
+        @for (int i = 0; i < _tickets.Count; i++)
+        {
+            int idx = i;
+            <div class="ttab @(idx == _activeIdx ? "active" : "")" @onclick="() => SwitchToTicket(idx)">
+                <i class="fas fa-receipt fa-xl"></i>
+                <span class="fs-6">@_tickets[idx].Label</span>
+                @if (_tickets.Count > 1)
+                {
+                    <span class="ttab-close fs-6" @onclick:stopPropagation @onclick="() => CloseTicketTab(idx)">×</span>
+                }
+            </div>
+        }
+        @if (_tickets.Count < 5)
+        {
+            <div class="tab-add" title="Nuevo ticket" @onclick="AddNewTicket">
+                <i class="fas fa-plus"></i>
+            </div>
+        }
+    </div>
+    <div class="action-row">
+        <label class="check-label fs-6" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:0 .5rem;">
+            <input type="checkbox" @bind="_isWholesale" @bind:after="OnWholesaleToggle" />
+            <span class="fs-6">Venta al mayoreo</span>
+        </label>
+        <button class="abtn abtn-danger" @onclick="ShowBuscarModal">
+            <i class="fas fa-search fa-xl"></i>
+            <span class="fs-6">Buscar</span>
+            <span class="k fs-6">F10</span>
+        </button>
+        <button class="abtn abtn-danger" @onclick="ShowPromoModal">
+            <i class="fas fa-tags fa-xl"></i>
+            <span class="fs-6">Promos</span>
+            <span class="k fs-6">F8</span>
+        </button>
+    </div>
+</div>
+
+        <!-- ── Cart table ── -->
+        <div class="table-card">
+            <div style="overflow-y:auto;flex:1;">
+                <table class="pos-table">
+                    <thead>
+                        <tr>
+                            <th class="col-barcode fs-6"><i class="fas fa-barcode fa-xl me-1"></i>Cód. Barras</th>
+                            <th class="fs-6"><i class="fas fa-box fa-xl me-1"></i>Descripción del Producto</th>
+                            <th class="col-price fs-6"><i class="fas fa-tag fa-xl me-1"></i>Precio Venta</th>
+                            <th class="col-qty fs-6"><i class="fas fa-hashtag fa-xl me-1"></i>Cant.</th>
+                            <th class="col-amount fs-6"><i class="fas fa-dollar-sign fa-xl me-1"></i>Importe</th>
+                            <th class="col-stock fs-6"><i class="fas fa-cubes fa-xl me-1"></i>Existencia</th>
+                    <th class="col-options fs-6"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _cart)
+                        {
+                            <tr class="@(_selectedItem == item ? "row-selected" : "") @(item.IsCombo ? "combo-row" : "")"
+                                @onclick="() => SelectItem(item)">
+                                <td class="col-barcode">
+                                    @if (item.IsCombo)
+                                    {
+                                        <span class="combo-badge fs-6"><i class="fas fa-gift"></i> COMBO</span>
+                                    }
+                                    else
+                                    {
+                                        <code class="fs-6" style="color:var(--primary);">@item.Barcode</code>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="fs-6">@item.Name</span>
+                                    @if (item.IsCombo && item.Components.Any())
+                                    {
+                                        <div class="combo-components-line">
+                                            @((MarkupString)string.Join(" · ", item.Components.Select(c =>
+                                            {
+                                                string qty = c.AllowFractional
+                                                    ? c.Quantity.ToString("N2").TrimEnd('0').TrimEnd(',') + (string.IsNullOrEmpty(c.UnitAbbreviation) ? "" : c.UnitAbbreviation)
+                                                    : ((long)c.Quantity).ToString() + "u";
+                                                return $"<span class='fs-6'>{qty} × {c.Name}</span>";
+                                            })))
+                                        </div>
+                                    }
+                                </td>
+                                <td class="col-price fs-6 fw-bold">$@item.UnitPrice.ToString("N2")@(item.IsCombo ? "" : !item.AllowFractional ? "/u" : string.IsNullOrEmpty(item.UnitAbbreviation) ? "" : "/" + item.UnitAbbreviation)</td>
+                                <td class="col-qty" @onclick:stopPropagation>
+                                    <input type="number"
+                                           class="qty-input fs-6"
+                                           min="@(item.AllowFractional ? "0.01" : "1")"
+                                           step="@(item.AllowFractional ? "0.01" : "1")"
+                                           @bind:get="item.Quantity"
+                                           @bind:set="val => { if (val > 0) item.Quantity = val; }"
+                                           @bind:event="onchange" />
+                                </td>
+                                <td class="col-amount amt-cell fs-6">$@item.Subtotal.ToString("N2")</td>
+                                <td class="col-stock fs-6" style="color:var(--pos-danger);">
+                                    @(item.IsCombo ? "—" : !item.AllowFractional ? ((long)item.Stock).ToString() + "u" : string.IsNullOrEmpty(item.UnitAbbreviation) ? item.Stock.ToString("N2") : item.Stock.ToString("N2") + item.UnitAbbreviation)
+                                </td>
+                                <td class="col-options" @onclick:stopPropagation>
+                                    <button class="row-delete-btn" @onclick="() => RemoveItem(item)" title="Eliminar">
+                                        <i class="fas fa-trash-alt fa-xl" style="color:var(--danger);"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (!_cart.Any())
+            {
+                <div class="empty-state">
+                    <i class="fas fa-shopping-basket fa-xl mb-4"></i>
+                    <p class="fs-6">No hay productos en la venta actual</p>
+                    <p class="fs-6">Escanee un código de barras o presione <strong>F10</strong> para buscar</p>
+                </div>
+            }
+        </div>
+
+        <!-- ── Bottom bar ── -->
+        <div class="pos-bottom">
+            <div class="count-badge fs-6">@_cart.Count</div>
+            <div class="count-text fs-6 fw-bold">Productos en la venta actual</div>
+
+            <div class="bottom-btns">
+                <button class="side-btn fs-6" @onclick="ShowSwitchModal">
+                    <i class="fas fa-exchange-alt"></i> Cambiar
+                    <span
+                    style="font-family:monospace;font-size:1rem;background:rgba(0,0,0,.08);border-radius:3px;padding:1px 4px;">F6</span>
+                </button>
+                <button class="side-btn fs-6" @onclick="ClearCart" disabled="@(!_cart.Any())">
+                    <i class="fas fa-trash fa-xl"></i> Eliminar todo
+                </button>
+                <button class="side-btn fs-6" @onclick="ShowClientModal">
+                    <i class="fas fa-user-tag fa-xl"></i>
+                    @(_client == null ? "Asignar cliente" : $"{_client.Nombres} {_client.Apellidos}")
+                </button>
+            </div>
+            <div class="totals-area">
+                <button class="side-btn" @onclick="ReprintLastTicketAsync">
+                    <i class="fas fa-print fa-xl"></i> 
+                    <span class="fs-6">Reimprimir Último Ticket</span>
+                </button>
+                <div class="total-lines">
+                    <div class="total-line">
+                        <span class="total-line-label fs-6">Subtotal</span>
+                        <span class="total-line-value fs-6">$@_subtotal.ToString("N2")</span>
+                    </div>
+                    <div class="total-line">
+                        <span class="total-line-label fs-6">Impuesto</span>
+                        <span class="total-line-value fs-6">$@_taxAmount.ToString("N2")</span>
+                    </div>
+                    <div class="total-line total-line-main">
+                        <span class="total-line-label fs-6">TOTAL</span>
+                        <span class="total-line-value fs-6">$@_total.ToString("N2")</span>
+                    </div>
+                </div>
+                <button class="checkout-btn" @onclick="ShowCheckoutModal" disabled="@(!_cart.Any() || _saving)">
+                    <i class="fas fa-cash-register fa-xl"></i>
+                    Cobrar
+                    <span class="kbdx-inline fs-6">F12</span>
+                </button>
+            </div>
+        </div>
+
+            <!-- ── Modal: Buscar producto (F10) ── -->
+            @if (_showBuscarModal)
+            {
+                <div class="modal-overlay" @onclick="() => _showBuscarModal = false">
+                    <div class="panel" style="max-width:820px;width:96vw;max-height:88vh;display:flex;flex-direction:column;" @onclick:stopPropagation>
+
+                        <div class="panel-header">
+                            <span><i class="fas fa-search me-2"></i>Búsqueda de Productos</span>
+                            <button class="panel-close fs-3" @onclick="() => _showBuscarModal = false">×</button>
+                        </div>
+
+                        <div class="panel-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:.75rem;padding-bottom:.5rem;">
+
+                            <p class="fs-6" style="color:var(--pos-text-muted);margin:0;">
+                                Teclea las primeras letras del producto... (o ingresá <strong>%</strong> para ver todos)
+                            </p>
+
+                            <div class="buscar-search-wrap">
+                                <i class="fas fa-search"></i>
+                                <input id="buscarInput" type="text" placeholder="Nombre o código..."
+                                       value="@_buscarSearch" @oninput="OnBuscarInput" @onkeydown="OnBuscarKeyDown" autocomplete="off" />
+                            </div>
+
+                            <div style="flex:1;overflow-y:auto;border:1px solid var(--pos-border);border-radius:8px;">
+                                @if (_buscarLoading)
+                                {
+                                    <div class="empty-state" style="padding:2rem;text-align:center;color:var(--pos-text-muted);">
+                                        <i class="fas fa-spinner fa-spin me-2"></i>Cargando...
+                                    </div>
+                                }
+                                else if (!_buscarResults.Any() && _buscarSearch.Length > 0)
+                                {
+                                    <div style="padding:2rem;text-align:center;color:var(--pos-text-muted);" class="fs-6">
+                                        Sin resultados para "<strong>@_buscarSearch</strong>"
+                                    </div>
+                                }
+                                else
+                                {
+                                    <table class="data-table buscar-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Descripción del Producto</th>
+                                                <th class="buscar-num">Precio Venta</th>
+                                                <th class="buscar-num">Categoría</th>
+                                                <th class="buscar-num">Inventario</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var p in _buscarResults)
+                                            {
+                                                <tr style="cursor:pointer;"
+                                                    class="@(_buscarSelected?.ProductId == p.ProductId ? "buscar-row-selected" : "")"
+                                                    @onclick="() => _buscarSelected = p"
+                                                    @ondblclick="() => ConfirmBuscarAsync(p)">
+                                                    <td>
+                                                        <div class="fs-6" style="font-weight:600;">@p.Name</div>
+                                                        <div class="fs-6" style="color:var(--pos-text-muted);font-family:monospace;">@p.Barcode</div>
+                                                    </td>
+                                                    <td class="buscar-num fs-6" style="font-weight:700;color:var(--pos-primary);">$@p.SalePrice.ToString("N2")</td>
+                                                    <td class="buscar-num fs-6" style="color:var(--pos-text-muted);">—</td>
+                                                    <td class="buscar-num fs-6 @(p.Stock <= 0 ? "buscar-stock-low" : "")">@p.Stock.ToString("N2")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="panel-footer" style="justify-content:space-between;">
+                            <span class="fs-6" style="color:var(--pos-text-muted);">
+                                @if (_buscarResults.Any())
+                                {
+                                    @($"{_buscarResults.Count} resultado{(_buscarResults.Count != 1 ? "s" : "")}")
+                                }
+                            </span>
+                            <div style="display:flex;gap:.5rem;">
+                                <button class="abtn abtn-sky" @onclick="() => _showBuscarModal = false">
+                                    <i class="fas fa-times me-1"></i> ESC — Cancelar
+                                </button>
+                                <button class="abtn abtn-green"
+                                        @onclick="() => { if (_buscarSelected != null) ConfirmBuscarAsync(_buscarSelected); }"
+                                        disabled="@(_buscarSelected == null)">
+                                    <i class="fas fa-check me-1"></i> ENTER — Aceptar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- ── Modal: Promociones (F8) ── -->
+            @if (_showPromoModal)
+            {
+                <div class="modal-overlay" @onclick="() => _showPromoModal = false">
+                    <div class="promo-modal" @onclick:stopPropagation>
+
+                        <div class="panel-header">
+                            <span><i class="fas fa-tags me-2"></i>Promociones y Combos</span>
+                            <button class="panel-close fs-3" @onclick="() => _showPromoModal = false">×</button>
+                        </div>
+
+                        @if (!_promoLoading && _promoList.Any())
+                        {
+                            <div class="promo-search-bar">
+                                <i class="fas fa-search"></i>
+                                <input type="text" placeholder="Buscar promoción o combo..."
+                                       @bind="_promoSearch" @bind:event="oninput" autocomplete="off" />
+                            </div>
+                        }
+
+                        <div class="promo-body">
+                            @if (_promoLoading)
+                            {
+                                <div class="promo-empty"><i class="fas fa-spinner fa-spin me-2"></i>Cargando promociones...</div>
+                            }
+                            else if (!_promoList.Any())
+                            {
+                                <div class="promo-empty">
+                                    <i class="fas fa-tags" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
+                                    No hay promociones activas en esta sucursal.
+                                </div>
+                            }
+                            else if (!_promoFiltered.Any())
+                            {
+                                <div class="promo-empty">
+                                    <i class="fas fa-search" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
+                                    Sin resultados para "<strong>@_promoSearch</strong>"
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="promo-list">
+                                    @foreach (var promo in _promoFiltered)
+                                    {
+                                        <div class="promo-row">
+                                            <div class="promo-row-icon"><i class="fas fa-gift"></i></div>
+                                            <div class="promo-row-info">
+                                                <div class="promo-row-name">@promo.Name</div>
+                                                @if (!string.IsNullOrEmpty(promo.Description))
+                                                {
+                                                    <div class="promo-row-desc">@promo.Description</div>
+                                                }
+                                                @if (promo.Details.Any())
+                                                {
+                                                    <div class="promo-row-components">
+                                                        @foreach (var d in promo.Details)
+                                                        {
+                                                            string qtyLabel = d.AllowFractional
+                                                                ? d.Quantity.ToString("N2").TrimEnd('0').TrimEnd(',') + (string.IsNullOrEmpty(d.UnitAbbreviation) ? "" : d.UnitAbbreviation)
+                                                                : ((long)d.Quantity).ToString() + "u";
+                                                            <span>@qtyLabel × @d.ProductName</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                            <div class="promo-row-right">
+                                                <div class="promo-row-price">$@promo.Price.ToString("N2")</div>
+                                                <button class="promo-row-btn" @onclick="() => AddPromoToCart(promo)">
+                                                    <i class="fas fa-cart-plus"></i> Agregar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- ── Modal: Cobrar ── -->
+            @if (_showCheckoutModal)
+            {
+                <div class="clientes-modal-overlay">
+                    <div class="ventas-checkout-modal" @onclick:stopPropagation>
+                        <div class="clientes-modal-icon"><i class="fas fa-cash-register fa-xl"></i></div>
+                        <div class="clientes-modal-title fs-6">Cobrar venta</div>
+
+                        <div class="ventas-checkout-total">
+                            <span class="fs-6">Total a cobrar:</span>
+                            <strong class="fs-6">$@_total.ToString("N2")</strong>
+                        </div>
+
+                        @if (HasStockProblems)
+                        {
+                            <div class="ventas-stock-error-banner">
+                                <div class="vseb-title"><i class="fas fa-exclamation-triangle me-2"></i>
+                                    Stock insuficiente — no se puede
+                                    confirmar
+                                </div>
+                                <ul class="vseb-list">
+                                    @foreach (var item in StockProblems)
+                                    {
+                                        <li class="fs-6">
+                                            <strong class="fs-6">@item.Name</strong>
+                                            — Existencia: @item.Stock.ToString("N2"),
+                                            Solicitado: @item.Quantity.ToString("N2"),
+                                            Faltante: @((item.Quantity - item.Stock).ToString("N2"))
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+
+                            <div class="ventas-pm-label fs-6">Forma de pago</div>
+                            <div class="ventas-pm-grid">
+                                @foreach (var pm in _paymentMethods)
+                                {
+                                    <button class="pm-btn @(!_isCredit && _checkoutPaymentMethodId == pm.PaymentMethodId ? "active" : "")"
+                                            @onclick="() => SelectPaymentMethod(pm)">
+                                        <i class="fas @GetPaymentIcon(pm.Name)"></i>
+                                        <span class="fs-6">@pm.Name</span>
+                                    </button>
+                                }
+                                @if (_client != null && _client.TieneCreditoAutorizado)
+                                {
+                                    <button class="pm-btn pm-btn-credit @(_isCredit ? "active-credit" : "")" @onclick="SelectCredit">
+                                        <i class="fas fa-handshake"></i>
+                                        A crédito
+                                    </button>
+                                }
+                            </div>
+
+                            @if (_isCredit)
+                            {
+                                var disponible = _client!.LimiteCredito > 0
+                                    ? _client.LimiteCredito - _clientOpenBalance
+                                    : (decimal?)null;
+                                bool excede = disponible.HasValue && _total > disponible.Value;
+
+                                <div class="ventas-credit-banner @(excede ? "ventas-credit-banner-danger" : "")">
+                                    <div><i class="fas fa-handshake me-2"></i>Crédito a <strong>@_client.Nombres @_client.Apellidos</strong>
+                                    </div>
+                                    @if (_client.LimiteCredito > 0)
+                                    {
+                                        <div class="vcb-limits">
+                                            <span>Deuda actual: <strong>$@_clientOpenBalance.ToString("N2")</strong></span>
+                                            <span>Límite: <strong>$@_client.LimiteCredito.ToString("N2")</strong></span>
+                                            <span class="@(excede ? "vcb-over" : "vcb-ok")">
+                                                Disponible: <strong>$@disponible!.Value.ToString("N2")</strong>
+                                            </span>
+                                        </div>
+                                        @if (excede)
+                                        {
+                                            <div class="vcb-warning"><i class="fas fa-exclamation-triangle me-1"></i>Esta venta supera el límite. No se
+                                                podrá confirmar.</div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <div style="font-size:.75rem;opacity:.8;">Sin límite configurado. El saldo quedará pendiente en Créditos.
+                                            </div>
+                                        }
+                                    </div>
+                                }
+            else
+                                {
+                                    @if (_isVale)
+                                    {
+                                        <div class="ventas-field-row">
+                                            <label class="fs-6">Nombre del vale</label>
+                                            <input type="text" class="ventas-amount-input" placeholder="Ej: Cliente García"
+                                                   @bind="_valeName" />
+                                        </div>
+                                        <div class="ventas-field-row">
+                                            <label class="fs-6">Monto del vale</label>
+                                            <input type="number" min="0" step="0.01" class="ventas-amount-input"
+                                                   @bind="_valeAmount" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="ventas-field-row">
+                                            <label class="fs-6">Recibido</label>
+                                            <input type="number" min="0" step="0.01" class="ventas-amount-input" @bind="_amountPaid" />
+                                        </div>
+
+                                        @if (_isCurrentPaymentCash)
+                                        {
+                                            <div class="ventas-change-row">
+                                                <span class="fs-6">Cambio</span>
+                                                <strong class="ventas-change-val">$@_change.ToString("N2")</strong>
+                                            </div>
+                                        }
+                                    }
+                                }
+
+                                <div class="clientes-modal-actions">
+                                    <button class="abtn abtn-sky" @onclick="() => _showCheckoutModal = false" disabled="@_saving">
+                                        <i class="fas fa-times"></i> Cancelar
+                                    </button>
+                                    <button class="abtn abtn-green" @onclick="ConfirmCheckoutAsync"
+                                            disabled="@(_saving || HasStockProblems || (_isCredit && _client?.LimiteCredito > 0 && (_total > _client.LimiteCredito - _clientOpenBalance)))">
+                                        <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                                        @(_saving ? "Guardando..." : _isCredit ? "Confirmar crédito" : "Confirmar cobro")
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- ── Modal: Asignar cliente ── -->
+                    @if (_showClientModal)
+                    {
+                        <div class="clientes-modal-overlay">
+                            <div class="ventas-client-modal" @onclick:stopPropagation>
+                                <div class="clientes-modal-icon"><i class="fas fa-user-tag"></i></div>
+                                <div class="clientes-modal-title">Asignar cliente</div>
+
+                                <div class="ventas-client-search">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" placeholder="Buscar por nombre o correo..." @bind="_clientSearch"
+                                           @oninput="FilterClients" />
+                                </div>
+
+                                <div class="ventas-client-list">
+                                    @if (!_clientResults.Any())
+                                    {
+                                        <div class="ventas-client-empty">No se encontraron clientes</div>
+                                    }
+                                    @foreach (var c in _clientResults.Take(8))
+                                    {
+                                        <div class="ventas-client-row" @onclick="() => AssignClient(c)">
+                                            <span class="ventas-client-name">@c.Nombres @c.Apellidos</span>
+                                            <span class="ventas-client-email">@c.Correo</span>
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="clientes-modal-actions">
+                                    @if (_client != null)
+                                    {
+                                        <button class="abtn abtn-rose" @onclick="RemoveClient">
+                                            <i class="fas fa-user-slash"></i> Quitar cliente
+                                        </button>
+                                    }
+                                    <button class="abtn abtn-sky" @onclick="() => _showClientModal = false">
+                                        <i class="fas fa-times"></i> Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- ── Modal: Ticket digital ── -->
+                    @if (_showTicketModal && _lastTicket != null)
+                    {
+                        <div class="tr-overlay">
+                            <div class="tr-modal" @onclick:stopPropagation id="ticket-print-area">
+
+                                <div class="tr-store">@_lastTicket.CompanyName</div>
+                                @if (!string.IsNullOrWhiteSpace(_lastTicket.Address))
+                                {
+                                    <div class="tr-company-line">@_lastTicket.Address</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_lastTicket.Phone))
+                                {
+                                    <div class="tr-company-line">Tel: @_lastTicket.Phone</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_lastTicket.TaxId))
+                                {
+                                    <div class="tr-company-line">CUIT: @_lastTicket.TaxId</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_lastTicket.TaxCondition))
+                                {
+                                    <div class="tr-company-line">@_lastTicket.TaxCondition</div>
+                                }
+
+                                <div class="tr-doctype">@_lastTicket.DocumentType</div>
+
+                                <div class="tr-meta">
+                                    <span>@_lastTicket.IssuedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                                    <span class="tr-folio">@_lastTicket.TicketNumber</span>
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(_lastTicket.ClientName))
+                                {
+                                    <div class="tr-client">Cliente: @_lastTicket.ClientName</div>
+                                }
+
+                                <div class="tr-divider"></div>
+
+                                <table class="tr-items">
+                                    <thead>
+                                        <tr>
+                                            <th>Producto</th>
+                                            <th class="tr-num">Cant</th>
+                                            <th class="tr-num">P.Unit</th>
+                                            <th class="tr-num">Importe</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var line in _lastTicket.Lines)
+                                        {
+                                            <tr>
+                                                <td title="@line.Name">@line.Name</td>
+                                                <td class="tr-num">@line.Qty.ToString("N2")</td>
+                                                <td class="tr-num">@_lastTicket.Currency@line.UnitPrice.ToString("N2")</td>
+                                                <td class="tr-num">@_lastTicket.Currency@line.Subtotal.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+
+                                <div class="tr-divider"></div>
+
+                                <div class="tr-totals">
+                                    <div class="tr-total-row">
+                                        <span>Subtotal</span>
+                                        <span>@_lastTicket.Currency@_lastTicket.Subtotal.ToString("N2")</span>
+                                    </div>
+                                    <div class="tr-total-row">
+                                        <span>Impuesto</span>
+                                        <span>@_lastTicket.Currency@_lastTicket.TaxAmount.ToString("N2")</span>
+                                    </div>
+                                    <div class="tr-total-row tr-total-main">
+                                        <span>TOTAL</span>
+                                        <span>@_lastTicket.Currency@_lastTicket.Total.ToString("N2")</span>
+                                    </div>
+                                    @if (!_lastTicket.IsCredit)
+                                    {
+                                        <div class="tr-total-row">
+                                            <span>@_lastTicket.PaymentMethod</span>
+                                            <span>@_lastTicket.Currency@_lastTicket.AmountPaid.ToString("N2")</span>
+                                        </div>
+                                        <div class="tr-total-row">
+                                            <span>Cambio</span>
+                                            <span>@_lastTicket.Currency@_lastTicket.Change.ToString("N2")</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="tr-credit-badge">
+                                            <i class="fas fa-handshake me-1"></i>Venta a crédito
+                                        </div>
+                                    }
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(_lastTicket.Footer))
+                                {
+                                    <div class="tr-divider"></div>
+                                    <div class="tr-footer-text">@_lastTicket.Footer</div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_lastTicket.CAE))
+                                {
+                                    <div class="tr-divider"></div>
+                                    <div class="tr-fiscal">
+                                        @if (_lastTicket.EsFacturaSimulada)
+                                        {
+                                            <div class="fs-6 text-warning fw-bold mb-1">
+                                                <i class="fas fa-flask me-1"></i>COMPROBANTE DE PRUEBA — HOMOLOGACIÓN
+                                            </div>
+                                        }
+                                        <div class="fs-6"><strong>Comprobante fiscal:</strong> @_lastTicket.InvoiceNumber</div>
+                                        <div class="fs-6"><strong>CAE:</strong> @_lastTicket.CAE</div>
+                                        @if (_lastTicket.EsFacturaSimulada)
+                                        {
+                                            <div class="fs-6 text-muted">CAE simulado — sin validez fiscal</div>
+                                        }
+                                        @if (_lastTicket.CAEFechaVencimiento.HasValue)
+                                        {
+                                            <div class="fs-6"><strong>Vto. CAE:</strong> @_lastTicket.CAEFechaVencimiento.Value.ToString("dd/MM/yyyy")</div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(_lastTicket.QrImageBase64))
+                                        {
+                                            <div class="tr-qr">
+                                                <img src="data:image/png;base64,@_lastTicket.QrImageBase64" alt="Código QR AFIP" />
+                                                <div class="fs-6 text-muted">Comprobante autorizado — AFIP</div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="tr-actions no-print">
+                                    <button class="abtn abtn-sky" onclick="window.print()">
+                                        <i class="fas fa-print"></i> Imprimir
+                                    </button>
+                                    <button class="abtn abtn-green" @onclick="CloseTicket">
+                                        <i class="fas fa-check"></i> Cerrar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- ── Modal: Cambio de Ticket (F5) ── -->
+                    @if (_showSwitchModal)
+                    {
+                        <div class="clientes-modal-overlay">
+                            <div class="ventas-switch-modal" @onclick:stopPropagation>
+                                <div class="clientes-modal-icon"><i class="fas fa-exchange-alt"></i></div>
+                                <div class="clientes-modal-title">Cambio de Ticket</div>
+
+                                <div class="vsm-list">
+                                    @for (int i = 0; i < _tickets.Count; i++)
+                                    {
+                                        int idx = i;
+                                        var t = _tickets[i];
+                                        decimal tTotal = t.Cart.Sum(x => x.Subtotal);
+                                        <div class="vsm-item @(idx == _activeIdx ? "vsm-active" : "")"
+                                             @onclick="() => SwitchToTicketFromModal(idx)">
+                                            <div class="vsm-item-icon">
+                                                <i class="fas fa-receipt"></i>
+                                            </div>
+                                            <div class="vsm-item-info">
+                                                <div class="vsm-item-label">@t.Label</div>
+                                                <div class="vsm-item-meta">
+                                                    @if (t.Cart.Any())
+                                                    {
+                                                        <span>@t.Cart.Count ítem@(t.Cart.Count != 1 ? "s" : "") · $@tTotal.ToString("N2")</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>Vacío</span>
+                                                    }
+                                                    @if (t.Client != null)
+                                                    {
+                                                        <span> · @t.Client.Nombres @t.Client.Apellidos</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                            @if (idx == _activeIdx)
+                                            {
+                                                <span class="vsm-badge">Actual</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="clientes-modal-actions">
+                                    @if (_tickets.Count < 5)
+                                    {
+                                        <button class="abtn abtn-blue" @onclick="AddNewTicketFromModal">
+                                            <i class="fas fa-plus"></i> Nuevo ticket
+                                        </button>
+                                    }
+                                    <button class="abtn abtn-sky" @onclick="() => _showSwitchModal = false">
+                                        <i class="fas fa-times"></i> Cerrar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+@code {
+
+    // ── Multi-ticket ───────────────────────────────────
+    private List<TicketSlot> _tickets = new() { new TicketSlot { Id = 1 } };
+    private int _activeIdx = 0;
+    private int _nextId = 2;
+    private bool _showSwitchModal;
+
+    // Active-slot shortcuts — always point to _tickets[_activeIdx]
+    private List<CartItem> _cart => _tickets[_activeIdx].Cart;
+    private Client? _client { get => _tickets[_activeIdx].Client; set => _tickets[_activeIdx].Client = value; }
+    private CartItem? _selectedItem
+    {
+        get => _tickets[_activeIdx].SelectedItem; set => _tickets[_activeIdx].SelectedItem =
+value;
+    }
+
+    // ── State ──────────────────────────────────────────
+    private string _codeInput = "";
+    private Dictionary<long, string> _unitAbbr = new();
+    private List<PaymentMethod> _paymentMethods = new();
+    private bool _allowNegativeStock = true;
+    private decimal _defaultTaxRate = 0;
+    private string _ticketFooter = "";
+    private string _currencySymbol = "$";
+    private CompanySettings? _companyConfig;
+
+    // ── Checkout modal ─────────────────────────────────
+    private bool _showCheckoutModal;
+    private bool _saving;
+    private long    _checkoutPaymentMethodId;
+    private decimal _amountPaid;
+    private bool    _isCredit;
+    private decimal _valeAmount;
+    private string  _valeName = "";
+    private decimal _clientOpenBalance;
+
+    // ── Ticket modal ───────────────────────────────────
+    private bool _showTicketModal;
+    private TicketVM? _lastTicket;
+
+    // ── Buscar modal (F10) ─────────────────────────────
+    private bool _showBuscarModal = false;
+    private string _buscarSearch = "";
+    private bool _buscarLoading = false;
+    private List<Product> _buscarAll = new();
+    private List<Product> _buscarResults = new();
+    private Product? _buscarSelected = null;
+
+    // ── Wholesale mode ─────────────────────────────────
+    private bool _isWholesale = false;
+
+    private void OnWholesaleToggle()
+    {
+        foreach (var ticket in _tickets)
+        foreach (var item in ticket.Cart.Where(i => !i.IsCombo))
+        {
+            item.UnitPrice = _isWholesale && item.WholesalePrice > 0
+                ? item.WholesalePrice
+                : item.SalePrice;
+        }
+        StateHasChanged();
+    }
+
+    // ── Promo modal ────────────────────────────────────
+    private bool _showPromoModal = false;
+    private bool _promoLoading = false;
+    private List<PromotionVM> _promoList = new();
+    private string _promoSearch = "";
+
+    private IEnumerable<PromotionVM> _promoFiltered => string.IsNullOrWhiteSpace(_promoSearch)
+        ? _promoList
+        : _promoList.Where(p =>
+            p.Name.Contains(_promoSearch, StringComparison.OrdinalIgnoreCase) ||
+            (p.Description?.Contains(_promoSearch, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    // ── Client modal ───────────────────────────────────
+    private bool _showClientModal;
+    private string _clientSearch = "";
+    private List<Client> _allClients = new();
+    private List<Client> _clientResults = new();
+
+    // ── Computed totals ────────────────────────────────
+    private decimal _subtotal => _cart.Sum(x => x.Subtotal);
+    private decimal _taxAmount => _cart.Sum(x => Math.Round(x.Subtotal * x.TaxRate / 100m, 2));
+    private decimal _total => _subtotal + _taxAmount;
+    private decimal _change => Math.Max(0, _amountPaid - _total);
+
+    private bool _isCurrentPaymentCash =>
+        _paymentMethods
+            .FirstOrDefault(x => x.PaymentMethodId == _checkoutPaymentMethodId)
+            ?.Name.Contains("Efectivo", StringComparison.OrdinalIgnoreCase) ?? false;
+
+    private bool _isVale =>
+        !_isCredit &&
+        _paymentMethods.FirstOrDefault(x => x.PaymentMethodId == _checkoutPaymentMethodId)
+            ?.Name.Contains("Vale", StringComparison.OrdinalIgnoreCase) == true;
+
+    private List<StockProblemVM> StockProblems
+    {
+        get
+        {
+            if (_allowNegativeStock) return new();
+
+            // aggregate total demand per product across direct items AND combo components
+            var demand = new Dictionary<long, (string Name, decimal Stock, decimal Demanded)>();
+
+            foreach (var item in _cart)
+            {
+                if (!item.IsCombo)
+                {
+                    if (demand.TryGetValue(item.ProductId, out var e))
+                        demand[item.ProductId] = (e.Name, e.Stock, e.Demanded + item.Quantity);
+                    else
+                        demand[item.ProductId] = (item.Name, item.Stock, item.Quantity);
+                }
+                else
+                {
+                    foreach (var comp in item.Components)
+                    {
+                        decimal qty = comp.Quantity * item.Quantity;
+                        if (demand.TryGetValue(comp.ProductId, out var e))
+                            demand[comp.ProductId] = (e.Name, e.Stock, e.Demanded + qty);
+                        else
+                            demand[comp.ProductId] = (comp.Name, comp.Stock, qty);
+                    }
+                }
+            }
+
+            return demand.Values
+                .Where(d => d.Demanded > d.Stock)
+                .Select(d => new StockProblemVM { Name = d.Name, Stock = d.Stock, Quantity = d.Demanded })
+                .ToList();
+        }
+    }
+
+    private bool HasStockProblems => StockProblems.Any();
+
+    // ── Lifecycle ──────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        hotkeyService.KeyPressed += HandleHotkey;
+        var units = await unitRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        _unitAbbr = units.ToDictionary(u => u.UnitId, u => u.Abbreviation);
+        _paymentMethods = await paymentMethodRepository.GetAllActiveAsync();
+        var configs = await configRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        string GetCfg(string key) => configs.FirstOrDefault(c => c.ConfigKey == key)?.Value ?? "";
+        _allowNegativeStock = GetCfg("allow_negative_stock") != "0";
+        if (decimal.TryParse(GetCfg("default_tax_rate"),
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out decimal rate))
+            _defaultTaxRate = rate;
+        _ticketFooter = GetCfg("ticket_footer");
+        _currencySymbol = GetCfg("currency_symbol") is { Length: > 0 } s ? s : "$";
+        _companyConfig = await companySettingsRepository.GetByStoreIdAsync(posSessionService.StoreId);
+    }
+
+    public void Dispose() => hotkeyService.KeyPressed -= HandleHotkey;
+
+    private void HandleHotkey(string key)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            switch (key)
+            {
+                case "F6": ShowSwitchModal(); break;
+                case "F8": await ShowPromoModal(); break;
+                case "F10": await ShowBuscarModal(); break;
+                case "F12": ShowCheckoutModal(); break;
+            }
+            StateHasChanged();
+        });
+    }
+
+    // ── Keyboard ───────────────────────────────────────
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddProductAsync();
+            await IJSRuntime.InvokeVoidAsync("eval", "document.getElementById('codeInput').focus()");
+        }
+        else if (e.Key == "Delete")
+        {
+            RemoveSelected();
+        }
+    }
+
+    // ── Multi-ticket logic ─────────────────────────────
+    private void SwitchToTicket(int idx)
+    {
+        if (idx == _activeIdx) return;
+        _activeIdx = idx;
+    }
+
+    private void SwitchToTicketFromModal(int idx)
+    {
+        _activeIdx = idx;
+        _showSwitchModal = false;
+    }
+
+    private void AddNewTicket()
+    {
+        if (_tickets.Count >= 5) return;
+        _tickets.Add(new TicketSlot { Id = _nextId++ });
+        _activeIdx = _tickets.Count - 1;
+    }
+
+    private void AddNewTicketFromModal()
+    {
+        AddNewTicket();
+        _showSwitchModal = false;
+    }
+
+    private void CloseTicketTab(int idx)
+    {
+        if (_tickets.Count <= 1) return;
+        _tickets.RemoveAt(idx);
+        if (idx < _activeIdx)
+            _activeIdx--;
+        else if (idx == _activeIdx)
+            _activeIdx = Math.Min(_activeIdx, _tickets.Count - 1);
+    }
+
+    private void ShowSwitchModal() => _showSwitchModal = true;
+
+    private void PutOnPending()
+    {
+        if (_tickets.Count >= 5)
+        {
+            _showSwitchModal = true;
+            return;
+        }
+        _tickets.Add(new TicketSlot { Id = _nextId++ });
+        _activeIdx = _tickets.Count - 1;
+    }
+
+    // ── Cart ───────────────────────────────────────────
+    private async Task AddProductAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_codeInput)) return;
+
+        string barcode = _codeInput.Trim();
+        _codeInput = "";
+
+        var existing = _cart.FirstOrDefault(x =>
+            x.Barcode.Equals(barcode, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            existing.Quantity++;
+            return;
+        }
+
+        try
+        {
+            var product = await productRepository.GetOneByBarcodeAsync(barcode);
+            if (product == null || product.StoreId != posSessionService.StoreId || !product.Active)
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "Producto no encontrado", "warning");
+                return;
+            }
+
+            decimal wholesale = product.WholesalePrice ?? 0;
+            _cart.Add(new CartItem
+            {
+                ProductId        = product.ProductId,
+                Barcode          = product.Barcode,
+                Name             = product.Name,
+                SalePrice        = product.SalePrice,
+                WholesalePrice   = wholesale,
+                UnitPrice        = _isWholesale && wholesale > 0 ? wholesale : product.SalePrice,
+                TaxRate          = product.TaxRate > 0 ? product.TaxRate : _defaultTaxRate,
+                CostPrice        = product.CostPrice,
+                AllowFractional  = product.AllowFractional,
+                Stock            = product.Stock,
+                UnitAbbreviation = UnitAbbr(product.UnitId),
+            });
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+    }
+
+    private void SelectItem(CartItem item)
+    {
+        _selectedItem = _selectedItem == item ? null : item;
+    }
+
+    private void RemoveSelected()
+    {
+        if (_selectedItem == null) return;
+        _cart.Remove(_selectedItem);
+        _selectedItem = null;
+    }
+
+    private void RemoveItem(CartItem item)
+    {
+        _cart.Remove(item);
+        if (_selectedItem == item) _selectedItem = null;
+    }
+
+    private void ClearCart()
+    {
+        _cart.Clear();
+        _client = null;
+        _selectedItem = null;
+    }
+
+    // ── Checkout ───────────────────────────────────────
+    private void ShowCheckoutModal()
+    {
+        if (!_cart.Any()) return;
+        _checkoutPaymentMethodId = _paymentMethods.FirstOrDefault()?.PaymentMethodId ?? 0;
+        _amountPaid = _total;
+        _isCredit = false;
+        _showCheckoutModal = true;
+    }
+
+    private void SelectPaymentMethod(PaymentMethod pm)
+    {
+        _checkoutPaymentMethodId = pm.PaymentMethodId;
+        _amountPaid  = _total;
+        _isCredit    = false;
+        _valeAmount  = _total;
+        _valeName    = "";
+    }
+
+    private async Task SelectCredit()
+    {
+        _checkoutPaymentMethodId = 0;
+        _isCredit = true;
+        _clientOpenBalance = _client != null
+            ? await creditRepository.GetOpenBalanceByClientIdAsync(_client.ClientId)
+            : 0;
+    }
+
+    private async Task ConfirmCheckoutAsync()
+    {
+        // Validate fractional quantities on non-fractional products
+        var fractionalProblems = _cart
+            .Where(i => !i.AllowFractional && i.Quantity != Math.Floor(i.Quantity))
+            .ToList();
+
+        if (fractionalProblems.Any())
+        {
+            string names = string.Join(", ", fractionalProblems.Select(i => $"'{i.Name}'"));
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Cantidad inválida",
+                $"Los siguientes productos no permiten venta fraccionada: {names}. " +
+                $"Corregí las cantidades a números enteros en el carrito antes de cobrar.",
+                NotificationTypeForJs.Warning);
+            return;
+        }
+
+        if (HasStockProblems)
+        {
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Stock insuficiente", "Ajuste las cantidades o aumente el stock antes de continuar.", "error");
+            return;
+        }
+
+        if (_isVale)
+        {
+            if (string.IsNullOrWhiteSpace(_valeName))
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "Ingresá el nombre del vale.", "warning");
+                return;
+            }
+            if (_valeAmount <= 0)
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "El monto del vale debe ser mayor a cero.", "warning");
+                return;
+            }
+        }
+
+        if (!_isCredit && _amountPaid < _total)
+        {
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Atención", "El monto recibido es menor al total.", "warning");
+            return;
+        }
+
+        if (_isCredit && _client!.LimiteCredito > 0)
+        {
+            decimal openBalance = await creditRepository.GetOpenBalanceByClientIdAsync(_client.ClientId);
+            if (openBalance + _total > _client.LimiteCredito)
+            {
+                decimal disponible = _client.LimiteCredito - openBalance;
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Límite de crédito excedido",
+                    $"El cliente tiene ${openBalance:N2} de deuda abierta. " +
+                    $"Límite: ${_client.LimiteCredito:N2}. " +
+                    $"Disponible: ${disponible:N2}.",
+                    "warning");
+                return;
+            }
+        }
+
+        _saving = true;
+        try
+        {
+            var sale = new Sale
+            {
+                StoreId = posSessionService.StoreId,
+                SystemUserId = posSessionService.SystemUserId,
+                ClientId = _client?.ClientId,
+                SaleStatusId = 1,
+                Subtotal = _subtotal,
+                Discount = 0,
+                TaxAmount = _taxAmount,
+                Total = _total,
+                AmountPaid = _isCredit ? 0 : _amountPaid,
+                Change = _isCredit ? 0 : _change,
+            };
+
+            var details = _cart.Select(item => new SaleDetail
+            {
+                ProductId           = item.IsCombo ? (long?)null : item.ProductId,
+                BarcodeSnapshot     = item.IsCombo ? null : item.Barcode,
+                ProductNameSnapshot = item.Name,
+                Quantity            = item.Quantity,
+                UnitPrice           = item.UnitPrice,
+                Discount            = 0,
+                TaxRate             = item.TaxRate,
+                Subtotal            = item.Subtotal,
+                CostPriceSnapshot   = item.IsCombo ? null : item.CostPrice,
+                PromotionId         = item.PromotionId,
+            }).ToList();
+
+            // Expand combo components for stock deduction
+            var comboStockLines = new List<(long ProductId, decimal Quantity)>();
+            foreach (var item in _cart.Where(i => i.IsCombo))
+            {
+                foreach (var comp in item.Components)
+                    comboStockLines.Add((comp.ProductId, comp.Quantity * item.Quantity));
+            }
+
+            if (_isCredit)
+            {
+                await saleRepository.AddFullSaleAsync(sale, details, new List<SalePayment>(), comboStockLines);
+
+                await creditRepository.AddAsync(new Credit
+                {
+                    ClientId = _client!.ClientId,
+                    SaleId = sale.SaleId,
+                    SystemUserId = posSessionService.SystemUserId,
+                    OriginalAmount = _total,
+                }, posSessionService.StoreId);
+            }
+            else
+            {
+                var payments = new List<SalePayment>
+                {
+                    new SalePayment
+                    {
+                        PaymentMethodId = _checkoutPaymentMethodId,
+                        Amount = _amountPaid,
+                    }
+                };
+                await saleRepository.AddFullSaleAsync(sale, details, payments, comboStockLines);
+
+                if (_isVale)
+                {
+                    await cashMovementRepository.AddAsync(new CashMovement
+                    {
+                        StoreId      = posSessionService.StoreId,
+                        SystemUserId = posSessionService.SystemUserId,
+                        Type         = "IN",
+                        Amount       = _valeAmount,
+                        Reason       = $"Se expedio un vale con {_valeName} por ${_valeAmount:N2}",
+                    });
+                }
+            }
+
+            string paymentMethodName = _isCredit ? "Crédito" :
+                _paymentMethods.FirstOrDefault(p => p.PaymentMethodId == _checkoutPaymentMethodId)?.Name ?? "";
+            string clientName = _client != null
+                ? $"{_client.Nombres} {_client.Apellidos}".Trim()
+                : "";
+
+            // Capture product IDs before cart is cleared
+            var soldProductIds = new HashSet<long>();
+            foreach (var item in _cart)
+            {
+                if (!item.IsCombo) soldProductIds.Add(item.ProductId);
+                else foreach (var comp in item.Components) soldProductIds.Add(comp.ProductId);
+            }
+            DateTime saleDateTime = DateTime.Now;
+            var cartSnapshot = _cart.ToList();
+            string clientCuit = _client?.CUIT ?? "";
+
+            var facturaResult = await afipFacturaElectronicaService.EmitirFacturaAsync(new IssueInvoiceRequestDTO
+            {
+                StoreId = posSessionService.StoreId,
+                SaleId = sale.SaleId,
+                SystemUserId = posSessionService.SystemUserId,
+                ClientId = _client?.ClientId,
+                ClientName = clientName,
+                ClientCUIT = clientCuit,
+                Concept = 1,
+                Subtotal = sale.Subtotal,
+                TaxAmount = sale.TaxAmount,
+                Total = sale.Total,
+                TaxRate = _defaultTaxRate,
+                Productos = cartSnapshot.Select(i => new IssueInvoiceLineDTO
+                {
+                    Description = i.Name,
+                    Quantity = i.Quantity,
+                    Price = i.UnitPrice,
+                    IVA = Math.Round(i.Subtotal * i.TaxRate / 100m, 2),
+                    Total = i.Subtotal + Math.Round(i.Subtotal * i.TaxRate / 100m, 2)
+                }).ToList()
+            });
+
+            if (!facturaResult.IsSuccess && !string.IsNullOrEmpty(facturaResult.UserMessage)
+                && facturaResult.UserMessage != "La facturación electrónica no está habilitada.")
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Facturación AFIP",
+                    facturaResult.UserMessage,
+                    NotificationTypeForJs.Warning);
+            }
+
+            _lastTicket = BuildTicket(sale, cartSnapshot, clientName, paymentMethodName, facturaResult);
+            _showCheckoutModal = false;
+            ClearCart();
+            _showTicketModal = true;
+
+            _ = SendLowStockAlertsAsync(soldProductIds.ToList(), saleDateTime);
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Buscar modal (F10) ─────────────────────────────
+    private async Task ShowBuscarModal()
+    {
+        _buscarSearch = "";
+        _buscarResults = new();
+        _buscarSelected = null;
+        _showBuscarModal = true;
+
+        if (!_buscarAll.Any())
+        {
+            _buscarLoading = true;
+            try
+            {
+                _buscarAll = await productRepository.GetAllActiveByStoreIdAsync(posSessionService.StoreId);
+            }
+            catch (Exception ex)
+            {
+                Failure failure = new()
+                {
+                    Active                   = true,
+                    DateTimeCreation         = DateTime.Now,
+                    DateTimeLastModification = DateTime.Now,
+                    UserCreationId           = 1,
+                    UserLastModificationId   = 1,
+                    EmergencyLevel           = 1,
+                    Comment                  = "",
+                    Message                  = ex.Message,
+                    Source                   = ex.Source ?? "",
+                    StackTrace               = ex.StackTrace ?? ""
+                };
+                await failureRepository.AddAsync(failure);
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+            }
+            finally
+            {
+                _buscarLoading = false;
+            }
+        }
+    }
+
+    private void OnBuscarInput(ChangeEventArgs e)
+    {
+        _buscarSearch = e.Value?.ToString() ?? "";
+        _buscarSelected = null;
+
+        string q = _buscarSearch.Trim();
+
+        if (q == "%" || q == "")
+        {
+            _buscarResults = q == "%" ? _buscarAll : new();
+            return;
+        }
+
+        string ql = q.ToLower();
+        _buscarResults = _buscarAll
+            .Where(p => p.Name.ToLower().Contains(ql) ||
+                        p.Barcode.ToLower().Contains(ql))
+            .Take(100)
+            .ToList();
+    }
+
+    private async Task OnBuscarKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _showBuscarModal = false;
+            return;
+        }
+        if (e.Key == "Enter" && _buscarSelected != null)
+        {
+            await ConfirmBuscarAsync(_buscarSelected);
+            return;
+        }
+        if (e.Key == "ArrowDown" && _buscarResults.Any())
+        {
+            int cur = _buscarSelected == null ? -1 : _buscarResults.IndexOf(_buscarSelected);
+            _buscarSelected = _buscarResults[Math.Min(cur + 1, _buscarResults.Count - 1)];
+        }
+        if (e.Key == "ArrowUp" && _buscarResults.Any())
+        {
+            int cur = _buscarSelected == null ? 0 : _buscarResults.IndexOf(_buscarSelected);
+            _buscarSelected = _buscarResults[Math.Max(cur - 1, 0)];
+        }
+    }
+
+    private async Task ConfirmBuscarAsync(Product p)
+    {
+        var existing = _cart.FirstOrDefault(x => x.ProductId == p.ProductId);
+        if (existing != null)
+            existing.Quantity++;
+        else
+        {
+            decimal wholesale = p.WholesalePrice ?? 0;
+            _cart.Add(new CartItem
+            {
+                ProductId        = p.ProductId,
+                Barcode          = p.Barcode,
+                Name             = p.Name,
+                SalePrice        = p.SalePrice,
+                WholesalePrice   = wholesale,
+                UnitPrice        = _isWholesale && wholesale > 0 ? wholesale : p.SalePrice,
+                TaxRate          = p.TaxRate > 0 ? p.TaxRate : _defaultTaxRate,
+                CostPrice        = p.CostPrice,
+                AllowFractional  = p.AllowFractional,
+                Stock            = p.Stock,
+                UnitAbbreviation = UnitAbbr(p.UnitId),
+            });
+        }
+
+        _showBuscarModal = false;
+    }
+
+    // ── Promo modal ────────────────────────────────────
+    private async Task ShowPromoModal()
+    {
+        _promoSearch = "";
+        _showPromoModal = true;
+        if (!_promoList.Any())
+        {
+            _promoLoading = true;
+            _promoList = await promotionRepository.GetAllActiveByStoreIdAsync(posSessionService.StoreId);
+            _promoLoading = false;
+        }
+    }
+
+    private void AddPromoToCart(PromotionVM promo)
+    {
+        var existing = _cart.FirstOrDefault(x => x.PromotionId == promo.PromotionId);
+        if (existing != null)
+        {
+            existing.Quantity++;
+        }
+        else
+        {
+            _cart.Add(new CartItem
+            {
+                ProductId = 0,
+                Barcode = "",
+                Name = promo.Name,
+                UnitPrice = promo.Price,
+                TaxRate = 0,
+                AllowFractional = false,
+                Stock = decimal.MaxValue,
+                PromotionId = promo.PromotionId,
+                Components = promo.Details.Select(d => new ComboComponent
+                {
+                    ProductId        = d.ProductId,
+                    Name             = d.ProductName,
+                    Quantity         = d.Quantity,
+                    Stock            = d.Stock,
+                    AllowFractional  = d.AllowFractional,
+                    UnitAbbreviation = d.UnitAbbreviation,
+                }).ToList(),
+            });
+        }
+        _showPromoModal = false;
+    }
+
+    // ── Client modal ───────────────────────────────────
+    private async Task ShowClientModal()
+    {
+        _clientSearch = "";
+        try
+        {
+            _allClients = await clientRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            _clientResults = _allClients.ToList();
+            _showClientModal = true;
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+    }
+
+    private void FilterClients(ChangeEventArgs e)
+    {
+        _clientSearch = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(_clientSearch))
+        {
+            _clientResults = _allClients.ToList();
+            return;
+        }
+        string q = _clientSearch.ToLower();
+        _clientResults = _allClients
+            .Where(c => c.Nombres.ToLower().Contains(q) ||
+                        c.Apellidos.ToLower().Contains(q) ||
+                        c.Correo.ToLower().Contains(q))
+            .ToList();
+    }
+
+    private void AssignClient(Client c)
+    {
+        _client = c;
+        _showClientModal = false;
+    }
+
+    private void RemoveClient()
+    {
+        _client = null;
+        _showClientModal = false;
+    }
+
+    // ── Ticket modal ───────────────────────────────────
+    private void CloseTicket()
+    {
+        _showTicketModal = false;
+        // _lastTicket kept in memory so Reimprimir can reopen it
+    }
+
+    private async Task ReprintLastTicketAsync()
+    {
+        if (_lastTicket != null)
+        {
+            _showTicketModal = true;
+            return;
+        }
+
+        // No sale in this session yet — load last sale from DB
+        try
+        {
+            var sales = await saleRepository.GetAllByStoreIdAsync(posSessionService.StoreId, 1);
+            if (!sales.Any())
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Sin ventas", "No hay ventas registradas en esta sucursal.", "info");
+                return;
+            }
+
+            var sale = sales[0];
+            var details = await saleRepository.GetDetailsBySaleIdAsync(sale.SaleId);
+            var invoice = await invoiceRepository.GetBySaleIdAsync(sale.SaleId);
+            string? qrImage = null;
+            if (invoice?.CAE is not null)
+            {
+                var config = await companySettingsRepository.GetByStoreIdAsync(posSessionService.StoreId);
+                var clientCuit = "";
+                if (sale.ClientId.HasValue)
+                {
+                    var client = await clientRepository.GetOneByClientIdAsync(sale.ClientId.Value);
+                    clientCuit = client?.CUIT ?? "";
+                }
+                var (docTipo, docNro) = DeterminarDocCliente(clientCuit);
+                var qrData = new AfipQrComprobanteData
+                {
+                    Fecha = invoice.InvoiceDate,
+                    CuitEmisor = afipQrService.ResolveCuitEmisor(config?.TaxId),
+                    PuntoVenta = invoice.PointOfSale,
+                    TipoComprobante = invoice.DocumentType,
+                    NumeroComprobante = invoice.DocumentNumber,
+                    Importe = invoice.Total,
+                    TipoDocReceptor = docTipo,
+                    NroDocReceptor = docNro,
+                    CodigoAutorizacion = afipQrService.ParseCodigoAutorizacion(invoice.CAE)
+                };
+                qrImage = afipQrService.Generate(qrData).ImageBase64;
+            }
+            _lastTicket = BuildTicketFromSale(sale, details, invoice, qrImage);
+            _showTicketModal = true;
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+    }
+
+    private TicketVM BuildTicketFromSale(Sale sale, List<SaleDetail> details, Invoice? invoice = null, string? qrImage = null)
+    {
+        bool isCredit = sale.AmountPaid == 0 && sale.Total > 0;
+        return new TicketVM
+        {
+            StoreName = posSessionService.StoreName,
+            CompanyName = ResolveCompanyName(),
+            Address = _companyConfig?.Address ?? "",
+            Phone = _companyConfig?.Phone ?? "",
+            TaxId = FormatTaxId(_companyConfig?.TaxId),
+            TaxCondition = _companyConfig?.TaxCondition ?? "",
+            DocumentType = invoice is not null ? GetDocumentTypeName(invoice.DocumentType) : "Ticket",
+            TicketNumber = sale.TicketNumber,
+            IssuedAt = sale.SaleDate,
+            ClientName = "",
+            PaymentMethod = isCredit ? "Crédito" : "",
+            AmountPaid = sale.AmountPaid,
+            Change = sale.Change,
+            Subtotal = sale.Subtotal,
+            TaxAmount = sale.TaxAmount,
+            Total = sale.Total,
+            Footer = _ticketFooter,
+            Currency = _currencySymbol,
+            IsCredit = isCredit,
+            CAE = invoice?.CAE,
+            CAEFechaVencimiento = invoice?.CAEExpirationDate,
+            InvoiceNumber = invoice?.InvoiceNumber,
+            EsFacturaSimulada = invoice?.Status == "demo",
+            QrImageBase64 = qrImage,
+            Lines = details.Select(d => new TicketLineVM
+            {
+                Name = d.ProductNameSnapshot,
+                Qty = d.Quantity,
+                UnitPrice = d.UnitPrice,
+                Subtotal = d.Subtotal,
+            }).ToList(),
+        };
+    }
+
+    private TicketVM BuildTicket(Sale sale, List<CartItem> items, string clientName, string paymentMethodName,
+        IssueInvoiceResultDTO? factura = null)
+    {
+        bool invoiced = factura?.IsSuccess == true || factura?.IsSimulated == true;
+        return new TicketVM
+        {
+            StoreName = posSessionService.StoreName,
+            CompanyName = ResolveCompanyName(),
+            Address = _companyConfig?.Address ?? "",
+            Phone = _companyConfig?.Phone ?? "",
+            TaxId = FormatTaxId(_companyConfig?.TaxId),
+            TaxCondition = _companyConfig?.TaxCondition ?? "",
+            DocumentType = invoiced ? GetDocumentTypeName(factura!.ReceiptType) : "Ticket",
+            TicketNumber = sale.TicketNumber,
+            IssuedAt = DateTime.Now,
+            ClientName = clientName,
+            PaymentMethod = paymentMethodName,
+            AmountPaid = _isCredit ? 0 : _amountPaid,
+            Change = _isCredit ? 0 : _change,
+            Subtotal = sale.Subtotal,
+            TaxAmount = sale.TaxAmount,
+            Total = sale.Total,
+            Footer = _ticketFooter,
+            Currency = _currencySymbol,
+            IsCredit = _isCredit,
+            CAE = factura?.IsSuccess == true ? factura.CAE : null,
+            CAEFechaVencimiento = factura?.IsSuccess == true ? factura.CAEExpirationDate : null,
+            InvoiceNumber = factura?.IsSuccess == true ? factura.ReceiptNumber : null,
+            EsFacturaSimulada = factura?.IsSimulated == true,
+            QrImageBase64 = factura?.QrImageBase64,
+            Lines = items.Select(i => new TicketLineVM
+            {
+                Name = i.Name,
+                Qty = i.Quantity,
+                UnitPrice = i.UnitPrice,
+                Subtotal = i.Subtotal,
+            }).ToList(),
+        };
+    }
+
+    // ── Low-stock email alert ──────────────────────────
+    private async Task SendLowStockAlertsAsync(List<long> productIds, DateTime saleDate)
+    {
+        try
+        {
+            if (!productIds.Any()) return;
+
+            long storeId = posSessionService.StoreId;
+            bool notifyCashier    = await configRepository.GetValueByStoreAsync(storeId, "send_email_to_cashier_when_araise_low_stock")    == "1";
+            bool notifySupervisor = await configRepository.GetValueByStoreAsync(storeId, "send_email_to_supervisor_when_araise_low_stock") == "1";
+            bool notifyAdmin      = await configRepository.GetValueByStoreAsync(storeId, "send_email_to_admin_when_araise_low_stock")      == "1";
+
+            if (!notifyCashier && !notifySupervisor && !notifyAdmin) return;
+
+            var products = await productRepository.GetManyByProductIdsAsync(productIds);
+            var lowStock = products
+                .Where(p => p.MinStock > 0 && p.Stock <= p.MinStock)
+                .Select(p => (p.Name, p.Stock, p.MinStock))
+                .ToList();
+
+            if (!lowStock.Any()) return;
+
+            var recipients = (await systemUserRepository.GetAllByStoreIdAsync(posSessionService.StoreId))
+                .Where(u => u.Active && (
+                    (notifyCashier    && u.Role == "cashier")    ||
+                    (notifySupervisor && u.Role == "supervisor") ||
+                    (notifyAdmin      && u.Role == "admin")))
+                .ToList();
+
+            if (!recipients.Any()) return;
+
+            foreach (var user in recipients)
+                await email.SendLowStockAlertAsync(user.Username, user.Name,
+                    posSessionService.StoreName, saleDate, lowStock);
+        }
+        catch
+        {
+            // Don't disrupt the checkout flow if emailing fails
+        }
+    }
+
+    private static (int DocTipo, long DocNro) DeterminarDocCliente(string clienteCuit)
+    {
+        var cuit = AfipCertificateHelper.NormalizeCuit(clienteCuit);
+        if (cuit.Length == 11)
+            return (AfipConstants.DocTipoCuit, long.Parse(cuit));
+        if (cuit.Length is >= 7 and <= 8)
+            return (AfipConstants.DocTipoDni, long.Parse(cuit));
+        return (AfipConstants.DocTipoConsumidorFinal, 0);
+    }
+
+    private string ResolveCompanyName() =>
+        !string.IsNullOrWhiteSpace(_companyConfig?.CompanyName)
+            ? _companyConfig!.CompanyName
+            : posSessionService.StoreName;
+
+    private static string FormatTaxId(string? taxId)
+    {
+        var digits = new string((taxId ?? "").Where(char.IsDigit).ToArray());
+        return digits.Length == 11
+            ? $"{digits[..2]}-{digits.Substring(2, 8)}-{digits[10..]}"
+            : (taxId ?? "");
+    }
+
+    private static string GetDocumentTypeName(int documentType) => documentType switch
+    {
+        1 => "Factura A",
+        6 => "Factura B",
+        11 => "Factura C",
+        2 or 7 or 12 => "Nota de Débito",
+        3 or 8 or 13 => "Nota de Crédito",
+        _ => "Comprobante"
+    };
+
+    // ── Helpers ────────────────────────────────────────
+    private string UnitAbbr(long? unitId) =>
+        unitId.HasValue ? _unitAbbr.GetValueOrDefault(unitId.Value, "") : "";
+
+    private static string GetPaymentIcon(string name) => name.ToLower() switch
+    {
+        var n when n.Contains("efectivo") => "fa-money-bill-wave",
+        var n when n.Contains("tarjeta") => "fa-credit-card",
+        var n when n.Contains("transfer") => "fa-exchange-alt",
+        var n when n.Contains("vale") => "fa-ticket-alt",
+        _ => "fa-coins"
+    };
+
+    // ── Inner classes ──────────────────────────────────
+    private class TicketSlot
+    {
+        public int Id { get; set; }
+        public string Label => $"Ticket {Id}";
+        public List<CartItem> Cart { get; set; } = new();
+        public Client? Client { get; set; }
+        public CartItem? SelectedItem { get; set; }
+    }
+
+    private class CartItem
+    {
+        public long ProductId { get; set; }
+        public string Barcode { get; set; } = "";
+        public string Name { get; set; } = "";
+        public decimal SalePrice      { get; set; }
+        public decimal WholesalePrice { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal TaxRate { get; set; }
+        public decimal CostPrice        { get; set; }
+        public bool    AllowFractional  { get; set; }
+        public decimal Stock            { get; set; }
+        public string  UnitAbbreviation { get; set; } = "";
+        public decimal Subtotal => Math.Round(UnitPrice * Quantity, 2);
+
+        public long? PromotionId { get; set; }
+        public bool IsCombo => PromotionId.HasValue;
+        public List<ComboComponent> Components { get; set; } = new();
+    }
+
+    private class ComboComponent
+    {
+        public long    ProductId        { get; set; }
+        public string  Name             { get; set; } = "";
+        public decimal Quantity         { get; set; }
+        public decimal Stock            { get; set; }
+        public bool    AllowFractional  { get; set; }
+        public string  UnitAbbreviation { get; set; } = "";
+    }
+
+    private class StockProblemVM
+    {
+        public string Name { get; set; } = "";
+        public decimal Stock { get; set; }
+        public decimal Quantity { get; set; }
+    }
+
+    private class TicketVM
+    {
+        public string StoreName { get; set; } = "";
+        public string CompanyName { get; set; } = "";
+        public string Address { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string TaxId { get; set; } = "";
+        public string TaxCondition { get; set; } = "";
+        public string DocumentType { get; set; } = "Ticket";
+        public string TicketNumber { get; set; } = "";
+        public DateTime IssuedAt { get; set; }
+        public string ClientName { get; set; } = "";
+        public string PaymentMethod { get; set; } = "";
+        public decimal AmountPaid { get; set; }
+        public decimal Change { get; set; }
+        public decimal Subtotal { get; set; }
+        public decimal TaxAmount { get; set; }
+        public decimal Total { get; set; }
+        public string Footer { get; set; } = "";
+        public string Currency { get; set; } = "$";
+        public bool IsCredit { get; set; }
+        public string? CAE { get; set; }
+        public DateTime? CAEFechaVencimiento { get; set; }
+        public string? InvoiceNumber { get; set; }
+        public bool EsFacturaSimulada { get; set; }
+        public string? QrImageBase64 { get; set; }
+        public List<TicketLineVM> Lines { get; set; } = new();
+    }
+
+    private class TicketLineVM
+    {
+        public string Name { get; set; } = "";
+        public decimal Qty { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal Subtotal { get; set; }
+    }
+}

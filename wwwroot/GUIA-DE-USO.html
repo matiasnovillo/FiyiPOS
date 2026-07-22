@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guía de Uso — FiyiPOS</title>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1e293b;
+  background: #f8fafc;
+  line-height: 1.6;
+}
+
+/* ── Variables ── */
+:root {
+  --indigo:  #6366f1;
+  --indigo-d:#4f46e5;
+  --sky:     #0ea5e9;
+  --green:   #22c55e;
+  --amber:   #f59e0b;
+  --red:     #ef4444;
+  --purple:  #a855f7;
+  --teal:    #14b8a6;
+  --slate:   #64748b;
+  --light:   #f1f5f9;
+  --border:  #e2e8f0;
+}
+
+/* ── Page wrapper ── */
+.page { max-width: 900px; margin: 0 auto; padding: 0 0 80px; }
+
+/* ── Cover ── */
+.cover {
+  background: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #818cf8 100%);
+  color: #fff;
+  padding: 60px 50px 50px;
+  position: relative;
+  overflow: hidden;
+}
+.cover::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Ccircle cx='30' cy='30' r='20'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.cover-badge {
+  display: inline-block;
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: .75rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  position: relative;
+}
+.cover h1 {
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  position: relative;
+}
+.cover h1 span { color: #a5b4fc; }
+.cover-sub {
+  margin-top: 14px;
+  font-size: 1.05rem;
+  opacity: .85;
+  position: relative;
+  max-width: 520px;
+}
+.cover-meta {
+  margin-top: 36px;
+  display: flex;
+  gap: 24px;
+  position: relative;
+}
+.cover-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cover-meta-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; opacity: .6; }
+.cover-meta-value { font-size: .9rem; font-weight: 600; }
+
+/* POS Terminal illustration */
+.pos-illustration {
+  position: absolute;
+  right: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: .18;
+}
+.pos-illustration svg { width: 180px; height: 180px; }
+
+/* ── TOC ── */
+.toc {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 30px 36px;
+  margin: 32px 24px;
+}
+.toc-title {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--slate);
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+.toc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 24px;
+}
+.toc a {
+  color: var(--indigo);
+  text-decoration: none;
+  font-size: .87rem;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.toc a:hover { text-decoration: underline; }
+.toc-num {
+  font-size: .7rem;
+  color: var(--slate);
+  min-width: 18px;
+}
+
+/* ── Section ── */
+.section {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 16px 24px;
+  overflow: hidden;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--border);
+}
+.section-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.section-icon.indigo { background: #eef2ff; color: var(--indigo); }
+.section-icon.sky    { background: #e0f2fe; color: var(--sky); }
+.section-icon.green  { background: #dcfce7; color: #16a34a; }
+.section-icon.amber  { background: #fef3c7; color: #d97706; }
+.section-icon.red    { background: #fee2e2; color: var(--red); }
+.section-icon.purple { background: #f3e8ff; color: var(--purple); }
+.section-icon.teal   { background: #ccfbf1; color: var(--teal); }
+.section-icon.slate  { background: #f1f5f9; color: var(--slate); }
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.section-subtitle {
+  font-size: .8rem;
+  color: var(--slate);
+  margin-top: 2px;
+}
+.section-body { padding: 24px 28px; }
+
+/* ── Typography in sections ── */
+.section-body h3 {
+  font-size: .95rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 24px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.section-body h3:first-child { margin-top: 0; }
+.section-body p { font-size: .875rem; color: #374151; margin-bottom: 10px; }
+.section-body ul, .section-body ol {
+  font-size: .875rem;
+  color: #374151;
+  padding-left: 20px;
+  margin-bottom: 10px;
+}
+.section-body li { margin-bottom: 5px; }
+.section-body strong { color: #0f172a; }
+
+/* ── Steps ── */
+.steps { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.step {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.step-num {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--indigo);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.step-body { font-size: .875rem; color: #374151; line-height: 1.55; }
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+  margin: 12px 0;
+}
+th {
+  background: var(--light);
+  text-align: left;
+  padding: 9px 12px;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--slate);
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  color: #374151;
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: #fafafa; }
+
+/* ── Keyboard keys ── */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: .72rem;
+  font-family: monospace;
+  font-weight: 700;
+  letter-spacing: .03em;
+  box-shadow: 0 2px 0 #0f172a;
+  vertical-align: middle;
+}
+
+/* ── Callouts ── */
+.callout {
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: .85rem;
+  margin: 14px 0;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.callout-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+.callout.info    { background: #eff6ff; border-left: 3px solid var(--sky); }
+.callout.warning { background: #fffbeb; border-left: 3px solid var(--amber); }
+.callout.danger  { background: #fef2f2; border-left: 3px solid var(--red); }
+.callout.success { background: #f0fdf4; border-left: 3px solid var(--green); }
+.callout p { margin: 0; }
+
+/* ── Badges ── */
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.badge-indigo { background: #eef2ff; color: var(--indigo-d); }
+.badge-green  { background: #dcfce7; color: #15803d; }
+.badge-amber  { background: #fef3c7; color: #92400e; }
+.badge-red    { background: #fee2e2; color: #b91c1c; }
+.badge-sky    { background: #e0f2fe; color: #0369a1; }
+.badge-purple { background: #f3e8ff; color: #7e22ce; }
+
+/* ── Role cards ── */
+.role-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 14px 0; }
+.role-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+}
+.role-card-icon { font-size: 1.6rem; margin-bottom: 8px; }
+.role-card-name { font-weight: 700; font-size: .9rem; color: #0f172a; margin-bottom: 6px; }
+.role-card-desc { font-size: .75rem; color: var(--slate); line-height: 1.5; }
+.role-card.admin  { border-top: 3px solid var(--indigo); }
+.role-card.super  { border-top: 3px solid var(--sky); }
+.role-card.cajero { border-top: 3px solid var(--green); }
+
+/* ── Keyboard grid ── */
+.kbd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
+.kbd-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.kbd-item .kbd { font-size: .8rem; padding: 4px 10px; }
+.kbd-item-desc { font-size: .75rem; color: var(--slate); }
+
+/* ── Feature cards ── */
+.feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+.feature-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  gap: 12px;
+}
+.feature-card-icon {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .95rem;
+  flex-shrink: 0;
+}
+.feature-card-title { font-weight: 700; font-size: .85rem; color: #0f172a; margin-bottom: 4px; }
+.feature-card-desc { font-size: .78rem; color: var(--slate); line-height: 1.5; }
+
+/* ── Ticket mockup ── */
+.ticket-mockup {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 280px;
+  margin: 14px auto;
+  font-family: monospace;
+  font-size: .75rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,.08);
+  text-align: center;
+}
+.ticket-mockup .store-name { font-weight: 700; font-size: .85rem; margin-bottom: 4px; }
+.ticket-mockup .folio { color: var(--indigo); font-weight: 700; margin-bottom: 8px; }
+.ticket-mockup hr { border: none; border-top: 1px dashed var(--border); margin: 8px 0; }
+.ticket-mockup .item-row { display: flex; justify-content: space-between; margin: 4px 0; }
+.ticket-mockup .total-row { display: flex; justify-content: space-between; font-weight: 700; font-size: .8rem; }
+.ticket-mockup .footer-msg { margin-top: 8px; font-size: .7rem; color: var(--slate); }
+
+/* ── Report tabs visual ── */
+.report-tabs-visual {
+  display: flex;
+  gap: 0;
+  margin: 14px 0 0;
+  border-bottom: 2px solid var(--border);
+}
+.rtab {
+  padding: 8px 16px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--slate);
+  cursor: default;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+.rtab.active { color: var(--indigo); border-bottom-color: var(--indigo); }
+
+/* ── Module overview grid ── */
+.module-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+.module-tile {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 12px;
+  text-align: center;
+}
+.module-tile-icon { font-size: 1.4rem; margin-bottom: 6px; }
+.module-tile-name { font-size: .75rem; font-weight: 700; color: #0f172a; }
+
+/* ── Divider ── */
+.divider { height: 1px; background: var(--border); margin: 8px 28px; }
+
+/* ── Footer ── */
+.doc-footer {
+  text-align: center;
+  font-size: .75rem;
+  color: var(--slate);
+  margin: 48px 24px 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Scheme Manager ── */
+.scm-vars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.scm-var-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scm-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,.08);
+}
+.scm-var-name  { font-size: .75rem; font-weight: 700; color: #0f172a; }
+.scm-var-desc  { font-size: .7rem; color: var(--slate); }
+.presets-grid  {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+.preset-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(0,0,0,.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ── Zoom ── */
+.zoom-levels {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+  align-items: center;
+}
+.zoom-chip {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: .75rem;
+  color: var(--slate);
+  background: var(--light);
+}
+.zoom-chip.default {
+  background: var(--indigo);
+  color: #fff;
+  border-color: var(--indigo-d);
+  font-weight: 700;
+}
+
+/* ── Print ── */
+@media print {
+  body { background: #fff; font-size: 13px; }
+  .page { max-width: 100%; padding: 0; }
+  .section { margin: 12px 0; break-inside: avoid; }
+  .cover { break-after: page; }
+  .toc { break-after: page; }
+  .section-body h3 { break-after: avoid; }
+  .steps, .role-cards, .kbd-grid, .feature-grid { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
+  @page { margin: 18mm 20mm; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ══════════════════ COVER ══════════════════ -->
+<div class="cover">
+  <div class="pos-illustration">
+    <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="30" width="160" height="110" rx="12" fill="white"/>
+      <rect x="30" y="40" width="140" height="80" rx="6" fill="#312e81"/>
+      <rect x="38" y="48" width="124" height="64" rx="4" fill="#1e1b4b"/>
+      <rect x="45" y="56" width="50" height="6" rx="3" fill="white" opacity=".5"/>
+      <rect x="45" y="68" width="80" height="4" rx="2" fill="white" opacity=".25"/>
+      <rect x="45" y="76" width="60" height="4" rx="2" fill="white" opacity=".25"/>
+      <rect x="45" y="84" width="70" height="4" rx="2" fill="white" opacity=".25"/>
+      <rect x="120" y="92" width="40" height="14" rx="4" fill="#6366f1"/>
+      <rect x="60" y="148" width="80" height="18" rx="6" fill="white" opacity=".6"/>
+      <rect x="75" y="168" width="50" height="24" rx="4" fill="white" opacity=".4"/>
+      <circle cx="100" cy="177" r="4" fill="white" opacity=".6"/>
+    </svg>
+  </div>
+  <div class="cover-badge">Sistema de Punto de Venta</div>
+  <h1>Guía de Uso<br><span>FiyiPOS</span></h1>
+  <p class="cover-sub">Manual completo del sistema web multi-sucursal: ventas, inventario, reportes, clientes y más.</p>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <span class="cover-meta-label">Versión</span>
+      <span class="cover-meta-value">1.0</span>
+    </div>
+    <div class="cover-meta-item">
+      <span class="cover-meta-label">Tecnología</span>
+      <span class="cover-meta-value">Blazor · .NET 10 · SQL Server</span>
+    </div>
+    <div class="cover-meta-item">
+      <span class="cover-meta-label">Fecha</span>
+      <span class="cover-meta-value">2026</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ TOC ══════════════════ -->
+<div class="toc">
+  <div class="toc-title">Tabla de contenidos</div>
+  <div class="toc-grid">
+    <a href="#s-acceso"><span class="toc-num">01</span> Acceso y roles</a>
+    <a href="#s-reportes"><span class="toc-num">11</span> Reportes y análisis</a>
+    <a href="#s-sucursal"><span class="toc-num">02</span> Selector de sucursal</a>
+    <a href="#s-operadores"><span class="toc-num">12</span> Operadores</a>
+    <a href="#s-ventas"><span class="toc-num">03</span> Módulo de Ventas</a>
+    <a href="#s-sucursales"><span class="toc-num">13</span> Sucursales</a>
+    <a href="#s-clientes"><span class="toc-num">04</span> Clientes</a>
+    <a href="#s-config"><span class="toc-num">14</span> Configuración</a>
+    <a href="#s-productos"><span class="toc-num">05</span> Productos</a>
+    <a href="#s-proveedores"><span class="toc-num">15</span> Proveedores</a>
+    <a href="#s-inventario"><span class="toc-num">06</span> Inventario</a>
+    <a href="#s-facturacion"><span class="toc-num">16</span> Facturación electrónica</a>
+    <a href="#s-compras"><span class="toc-num">07</span> Compras</a>
+    <a href="#s-billing"><span class="toc-num">17</span> Billing y vencimiento</a>
+    <a href="#s-devoluciones"><span class="toc-num">08</span> Devoluciones</a>
+    <a href="#s-scheme"><span class="toc-num">18</span> Esquema de colores</a>
+    <a href="#s-creditos"><span class="toc-num">09</span> Créditos</a>
+    <a href="#s-zoom"><span class="toc-num">19</span> Zoom de interfaz</a>
+    <a href="#s-corte"><span class="toc-num">10</span> Corte de Caja</a>
+    <a href="#s-consumo-interno"><span class="toc-num">20</span> Consumo interno</a>
+    <a href="#s-sidebar"><span class="toc-num">21</span> Menú lateral</a>
+    <a href="#s-unidades"><span class="toc-num">22</span> Unidades de medida</a>
+    <a href="#s-faq"><span class="toc-num">—</span> Preguntas frecuentes</a>
+  </div>
+</div>
+
+<!-- ══════════════════ 01 ACCESO ══════════════════ -->
+<div class="section" id="s-acceso">
+  <div class="section-header">
+    <div class="section-icon indigo">🔐</div>
+    <div>
+      <div class="section-title">1. Acceso y roles</div>
+      <div class="section-subtitle">Inicio de sesión y niveles de acceso</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>Inicio de sesión</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Ingresá a la URL del sistema en tu navegador.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">En la pantalla de login, ingresá tu <strong>usuario</strong> y <strong>contraseña</strong>.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Si tu cuenta tiene acceso a más de una sucursal, el sistema te pedirá que elijas cuál usar.</div></div>
+    </div>
+
+    <h3>Roles del sistema</h3>
+    <div class="role-cards">
+      <div class="role-card cajero">
+        <div class="role-card-icon">🧑‍💼</div>
+        <div class="role-card-name">Cajero</div>
+        <div class="role-card-desc">Operador de caja diario. Accede a Ventas, Clientes, Inventario, Devoluciones, Consumo interno, Créditos, Movimientos, Corte y Reportes. <strong>No tiene acceso a Productos ni Promociones.</strong></div>
+      </div>
+      <div class="role-card super">
+        <div class="role-card-icon">👨‍💻</div>
+        <div class="role-card-name">Supervisor</div>
+        <div class="role-card-desc">Todo lo del cajero, más Productos, Promociones, Operadores, Compras y Proveedores. Recibe alertas de stock bajo y diferencias de corte si están configuradas.</div>
+      </div>
+      <div class="role-card admin">
+        <div class="role-card-icon">🛡️</div>
+        <div class="role-card-name">Administrador</div>
+        <div class="role-card-desc">Control total del sistema, incluyendo Sucursales, Configuración y Esquema de colores. Recibe alertas de stock bajo y diferencias de corte si están configuradas.</div>
+      </div>
+    </div>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <p>Los menús que no corresponden a tu rol <strong>no aparecen</strong> en el menú lateral.</p>
+    </div>
+    <div class="callout warning">
+      <span class="callout-icon">📱</span>
+      <p>El sistema está optimizado para <strong>pantallas de monitor</strong> (≥ 768 px). En celulares y tablets pequeñas se muestra un aviso indicando que se requiere una pantalla más grande para el uso completo del sistema.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 02 SUCURSAL ══════════════════ -->
+<div class="section" id="s-sucursal">
+  <div class="section-header">
+    <div class="section-icon sky">🏪</div>
+    <div>
+      <div class="section-title">2. Selector de sucursal</div>
+      <div class="section-subtitle">Cambio de contexto sin cerrar sesión</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>Si tenés acceso a más de una sucursal, podés cambiar entre ellas desde el encabezado superior sin cerrar sesión.</p>
+    <ul>
+      <li>Hacé clic en el <strong>nombre de la sucursal</strong> actual, en la parte superior del menú lateral (debajo de "FiyiPOS").</li>
+      <li>Seleccioná la sucursal destino de la lista.</li>
+      <li><strong>Todos los módulos se actualizan automáticamente</strong> al nuevo contexto.</li>
+      <li>El módulo de Ventas se reinicia limpio al cambiar de sucursal.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════════════ 03 VENTAS ══════════════════ -->
+<div class="section" id="s-ventas">
+  <div class="section-header">
+    <div class="section-icon green">🛒</div>
+    <div>
+      <div class="section-title">3. Módulo de Ventas</div>
+      <div class="section-subtitle">Núcleo del sistema — registrar ventas, cobrar y gestionar tickets</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>Registrar una venta</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Ingresá al módulo <strong>Ventas</strong> desde la carpeta Ventas del menú lateral.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Escaneá el código de barras del producto en el campo superior, o escribilo manualmente y presioná <span class="kbd">ENTER</span> o el botón <strong>Agregar Producto</strong>.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">El producto se agrega al carrito con cantidad 1. Modificá la cantidad directamente en la columna <strong>Cant.</strong> de la tabla.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Para eliminar un artículo, usá el <strong>ícono de papelera</strong> en la fila, o seleccioná la fila y presioná <span class="kbd">DEL</span>.</div></div>
+      <div class="step"><div class="step-num">5</div><div class="step-body">Cuando la venta esté lista, presioná <strong>Cobrar</strong> <span class="kbd">F12</span>.</div></div>
+    </div>
+
+    <h3>Herramientas de búsqueda y carga</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#fef3c7;color:#d97706;">🔍</div>
+        <div>
+          <div class="feature-card-title">Buscar producto <span class="kbd">F10</span></div>
+          <div class="feature-card-desc">Abre un buscador a pantalla completa. Filtrá por nombre o código en tiempo real. Ingresá <strong>%</strong> para ver todos los productos. Navegá con <span class="kbd">↑</span> <span class="kbd">↓</span> y confirmá con <span class="kbd">ENTER</span> o doble clic.</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#f3e8ff;color:#a855f7;">➕</div>
+        <div>
+          <div class="feature-card-title">Varios <span class="kbd">INS</span></div>
+          <div class="feature-card-desc">Modal para cargar un producto por código con <strong>cantidad personalizada</strong> (puede ser decimal si el producto lo permite). Si ya está en el carrito, suma a la cantidad existente.</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Cobrar una venta</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Elegí la <strong>forma de pago</strong> (Efectivo, Tarjeta, Transferencia, etc.).</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Si el método es Efectivo, ingresá el <strong>monto recibido</strong> — el sistema calcula el cambio automáticamente.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Si el cliente tiene <strong>crédito autorizado</strong>, aparece la opción "A crédito" con el límite disponible.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Hacé clic en <strong>Confirmar cobro</strong> (o <strong>Confirmar crédito</strong>). Se muestra el ticket digital.</div></div>
+    </div>
+
+    <div class="ticket-mockup">
+      <div class="store-name">🏪 Mi Tienda</div>
+      <div style="font-size:.68rem;color:#6b7280;margin-bottom:4px;">15/05/2026 10:32</div>
+      <div class="folio">T-000042</div>
+      <hr>
+      <div class="item-row"><span>Producto A x2</span><span>$40.00</span></div>
+      <div class="item-row"><span>Producto B x1</span><span>$15.50</span></div>
+      <hr>
+      <div class="item-row" style="color:#6b7280;"><span>Subtotal</span><span>$55.50</span></div>
+      <div class="item-row" style="color:#6b7280;"><span>IVA 16%</span><span>$8.88</span></div>
+      <div class="total-row"><span>TOTAL</span><span>$64.38</span></div>
+      <hr>
+      <div class="item-row" style="color:#6b7280;"><span>Efectivo</span><span>$70.00</span></div>
+      <div class="item-row" style="color:#6b7280;"><span>Cambio</span><span>$5.62</span></div>
+      <div class="footer-msg">¡Gracias por su compra!</div>
+    </div>
+
+    <div class="callout danger">
+      <span class="callout-icon">⚠️</span>
+      <p>Si algún producto tiene <strong>stock insuficiente</strong>, la venta no puede confirmarse. El sistema lo indica con un aviso en rojo dentro del modal.</p>
+    </div>
+
+    <h3>Asignar un cliente a la venta</h3>
+    <ul>
+      <li>Hacé clic en el botón <strong>Asignar cliente</strong> en la barra inferior.</li>
+      <li>Buscá al cliente por nombre o correo en el modal.</li>
+      <li>Seleccionalo — queda asociado al ticket actual.</li>
+      <li>Para quitarlo, volvé a abrir el mismo modal y presioná <strong>Quitar cliente</strong>.</li>
+    </ul>
+
+    <h3>Reimprimir último ticket</h3>
+    <p>El botón <strong>Reimprimir Último Ticket</strong> en la barra inferior reabre el ticket de la última venta procesada:</p>
+    <ul>
+      <li>Si hubo una venta en la sesión actual, muestra el ticket <strong>guardado en memoria</strong> sin consultar la base de datos.</li>
+      <li>Si es la primera apertura de la sesión, carga automáticamente <strong>la última venta registrada</strong> en la sucursal desde la base de datos.</li>
+    </ul>
+
+    <h3>Multi-ticket (hasta 5 tickets simultáneos)</h3>
+    <p>Podés tener hasta <strong>5 tickets abiertos en simultáneo</strong>. Útil cuando un cliente interrumpe una venta o para atender a varios en paralelo.</p>
+    <table>
+      <thead><tr><th>Acción</th><th>Cómo hacerlo</th></tr></thead>
+      <tbody>
+        <tr><td>Abrir un nuevo ticket</td><td>Hacé clic en el botón <strong>+</strong> a la derecha de las pestañas</td></tr>
+        <tr><td>Cambiar de ticket</td><td>Hacé clic en la pestaña, o presioná <strong>Cambiar</strong> <span class="kbd">F5</span> para ver el modal de selección</td></tr>
+        <tr><td>Cerrar un ticket</td><td>Hacé clic en la <strong>×</strong> dentro de la pestaña (disponible cuando hay más de uno)</td></tr>
+      </tbody>
+    </table>
+    <div class="callout info">
+      <span class="callout-icon">💡</span>
+      <p>Cada pestaña muestra el número de ticket, un contador de ítems en el carrito y la × para cerrar.</p>
+    </div>
+
+    <h3>Atajos de teclado</h3>
+    <div class="kbd-grid">
+      <div class="kbd-item"><span class="kbd">ENTER</span><div class="kbd-item-desc">Agregar producto al carrito</div></div>
+      <div class="kbd-item"><span class="kbd">INS</span><div class="kbd-item-desc">Modal Varios (cantidad personalizada)</div></div>
+      <div class="kbd-item"><span class="kbd">F5</span><div class="kbd-item-desc">Modal de cambio de ticket</div></div>
+      <div class="kbd-item"><span class="kbd">F10</span><div class="kbd-item-desc">Buscador de productos</div></div>
+      <div class="kbd-item"><span class="kbd">F12</span><div class="kbd-item-desc">Modal de cobro</div></div>
+      <div class="kbd-item"><span class="kbd">DEL</span><div class="kbd-item-desc">Eliminar artículo seleccionado</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ 04 CLIENTES ══════════════════ -->
+<div class="section" id="s-clientes">
+  <div class="section-header">
+    <div class="section-icon sky">👥</div>
+    <div>
+      <div class="section-title">4. Módulo de Clientes</div>
+      <div class="section-subtitle">Catálogo de clientes y gestión de crédito autorizado</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#e0f2fe;color:#0369a1;">📋</div>
+        <div>
+          <div class="feature-card-title">Listar y buscar</div>
+          <div class="feature-card-desc">Búsqueda por nombre, correo o teléfono en tiempo real.</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#dcfce7;color:#15803d;">✏️</div>
+        <div>
+          <div class="feature-card-title">Crear / Editar</div>
+          <div class="feature-card-desc">Datos personales, contacto, RFC y configuración de crédito.</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#f3e8ff;color:#7e22ce;">💳</div>
+        <div>
+          <div class="feature-card-title">Crédito autorizado</div>
+          <div class="feature-card-desc">Activá el toggle para permitir ventas a crédito. Configurá un límite (0 = ilimitado).</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#fef3c7;color:#92400e;">📊</div>
+        <div>
+          <div class="feature-card-title">Exportar a Excel</div>
+          <div class="feature-card-desc">Descarga la lista completa de clientes de la sucursal.</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Campos principales</h3>
+    <table>
+      <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Nombres / Apellidos</strong></td><td>Nombre completo del cliente</td></tr>
+        <tr><td><strong>Correo</strong></td><td>Email de contacto</td></tr>
+        <tr><td><strong>Teléfono</strong></td><td>Número de contacto</td></tr>
+        <tr><td><strong>RFC / Identificación</strong></td><td>Para facturación electrónica</td></tr>
+        <tr><td><strong>Crédito autorizado</strong></td><td>Si puede comprar a crédito desde Ventas</td></tr>
+        <tr><td><strong>Límite de crédito</strong></td><td>Monto máximo de deuda permitido (0 = sin límite)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ 05 PRODUCTOS ══════════════════ -->
+<div class="section" id="s-productos">
+  <div class="section-header">
+    <div class="section-icon amber">📦</div>
+    <div>
+      <div class="section-title">5. Módulo de Productos</div>
+      <div class="section-subtitle">Catálogo de artículos disponibles para la venta</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <table>
+      <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Código de barras</strong></td><td>Se usa para escanear en Ventas</td></tr>
+        <tr><td><strong>Nombre</strong></td><td>Descripción que aparece en el ticket</td></tr>
+        <tr><td><strong>Precio de venta</strong></td><td>Precio al público</td></tr>
+        <tr><td><strong>Stock actual</strong></td><td>Cantidad disponible en la sucursal</td></tr>
+        <tr><td><strong>Categoría</strong></td><td>Clasificación del producto</td></tr>
+        <tr><td><strong>Permite fracciones</strong></td><td>Si la cantidad puede ser decimal (ej: Kg, Litro)</td></tr>
+        <tr><td><strong>Tasa de impuesto</strong></td><td>Porcentaje aplicado al subtotal del artículo</td></tr>
+      </tbody>
+    </table>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <p>Los productos <strong>inactivos</strong> no aparecen en el buscador de Ventas ni en el módulo de Varios.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 06 INVENTARIO ══════════════════ -->
+<div class="section" id="s-inventario">
+  <div class="section-header">
+    <div class="section-icon teal">📊</div>
+    <div>
+      <div class="section-title">6. Módulo de Inventario</div>
+      <div class="section-subtitle">Control de movimientos de stock: entradas, salidas y ajustes</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <h3>Tipos de movimiento</h3>
+    <table>
+      <thead><tr><th>Tipo</th><th>Cuándo usarlo</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-green">IN — Entrada</span></td><td>Mercancía que ingresa sin compra formal registrada</td></tr>
+        <tr><td><span class="badge badge-red">OUT — Salida</span></td><td>Mermas, muestras, pérdidas o ajustes a la baja</td></tr>
+        <tr><td><span class="badge badge-indigo">ADJUST — Ajuste</span></td><td>Corrección directa del stock; el sistema calcula la diferencia automáticamente</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Registrar un movimiento</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Buscá el producto por nombre o código.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Seleccioná el tipo: <strong>IN / OUT / ADJUST</strong>.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">En Ajuste: ingresá el <strong>stock real</strong> — el sistema muestra la diferencia en preview antes de guardar.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Ingresá la <strong>razón</strong> y una <strong>referencia</strong> opcional (número de factura, conteo físico, etc.).</div></div>
+      <div class="step"><div class="step-num">5</div><div class="step-body">Guardá el movimiento. Aparece en el historial ordenado por fecha descendente.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 07 COMPRAS ══════════════════ -->
+<div class="section" id="s-compras">
+  <div class="section-header">
+    <div class="section-icon purple">🛍️</div>
+    <div>
+      <div class="section-title">7. Módulo de Compras</div>
+      <div class="section-subtitle">Registro de compras a proveedores con actualización de stock</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <h3>Registrar una compra</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Hacé clic en <strong>Nueva compra</strong> y seleccioná el <strong>proveedor</strong>.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Agregá productos: buscá por nombre o código, ingresá cantidad y costo unitario.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Guardá. La compra queda en estado <span class="badge badge-amber">Pendiente</span>.</div></div>
+    </div>
+
+    <h3>Confirmar recepción</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Buscá la compra pendiente en la lista y hacé clic en <strong>Confirmar recepción</strong>.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">El sistema actualiza el stock, genera un movimiento <span class="badge badge-green">IN</span> por cada línea y cambia el estado a <span class="badge badge-green">Confirmada</span>.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 08 DEVOLUCIONES ══════════════════ -->
+<div class="section" id="s-devoluciones">
+  <div class="section-header">
+    <div class="section-icon red">↩️</div>
+    <div>
+      <div class="section-title">8. Módulo de Devoluciones</div>
+      <div class="section-subtitle">Devolución de artículos y restauración de stock</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Ingresá el <strong>número de ticket</strong> de la venta original (ej: <code>T-000042</code>) y presioná <strong>Buscar</strong>.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">El sistema carga los artículos de esa venta. Marcá los artículos a devolver.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Ajustá la <strong>cantidad</strong> a devolver si es menor a la vendida.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Ingresá el <strong>motivo</strong> (opcional) y hacé clic en <strong>Confirmar devolución</strong>.</div></div>
+    </div>
+    <div class="callout success">
+      <span class="callout-icon">✅</span>
+      <p>Al confirmar: el stock se restaura automáticamente y se genera un movimiento <span class="badge badge-green">IN</span> por cada línea devuelta.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 09 CRÉDITOS ══════════════════ -->
+<div class="section" id="s-creditos">
+  <div class="section-header">
+    <div class="section-icon amber">🤝</div>
+    <div>
+      <div class="section-title">9. Módulo de Créditos</div>
+      <div class="section-subtitle">Gestión de cuentas por cobrar</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>El panel izquierdo lista los créditos activos (filtro Pendientes / Todos). El panel derecho muestra el detalle del crédito seleccionado.</p>
+
+    <h3>Registrar un abono</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Seleccioná el crédito en la lista izquierda.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Hacé clic en <strong>Nuevo abono</strong> e ingresá el monto del pago.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Confirmá. Si el abono cubre el saldo total, el crédito se cierra automáticamente.</div></div>
+    </div>
+
+    <div class="callout success">
+      <span class="callout-icon">💵</span>
+      <p>Si el abono se registra con un <strong>método de pago en efectivo</strong>, el sistema genera automáticamente un <strong>movimiento de caja (IN)</strong> por ese monto, con la referencia al crédito y el nombre del cliente. Queda visible en el historial de Movimientos y es contemplado en el cálculo de efectivo del Corte de Caja.</p>
+    </div>
+    <div class="callout info">
+      <span class="callout-icon">💡</span>
+      <p>Usá <strong>Nuevo crédito manual</strong> para registrar deudas que no provienen de una venta del sistema (ej: saldos anteriores).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 10 CORTE ══════════════════ -->
+<div class="section" id="s-corte">
+  <div class="section-header">
+    <div class="section-icon slate">🏦</div>
+    <div>
+      <div class="section-title">10. Módulo de Corte de Caja</div>
+      <div class="section-subtitle">Cierre de jornada con desglose por forma de pago</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">El panel derecho muestra el <strong>preview del corte actual</strong>: ventas del período y desglose por método de pago.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Ingresá el <strong>fondo de caja</strong> y el <strong>efectivo en caja</strong> para calcular la diferencia.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Hacé clic en <strong>Realizar corte</strong>. El historial de cortes aparece en el panel izquierdo.</div></div>
+    </div>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <p>El efectivo incluye solo los pagos con métodos marcados como "cash". Los demás métodos (tarjeta, transferencia) se muestran por separado. Los abonos de crédito pagados en efectivo también se suman al total esperado.</p>
+    </div>
+    <div class="callout warning">
+      <span class="callout-icon">📧</span>
+      <p>Si la opción <strong>"Notificar por diferencia en corte de caja"</strong> está activada en Configuración, el sistema envía automáticamente un correo a los <strong>supervisores y administradores</strong> de la sucursal cuando el efectivo contado no coincide con el monto esperado, informando el faltante o sobrante exacto.</p>
+    </div>
+
+    <h3>Descarga del informe de corte</h3>
+    <p>Cada corte registrado puede descargarse como <strong>archivo Excel</strong> desde el historial del panel izquierdo. El informe incluye:</p>
+    <ul>
+      <li>Desglose de ventas por método de pago (efectivo, tarjeta, transferencia, etc.)</li>
+      <li>Total de ventas, costo de mercancía vendida (COGS) y margen bruto del período</li>
+      <li>Fondo de caja, efectivo contado y diferencia calculada</li>
+      <li>Nombre del operador que realizó el corte y fecha/hora de cierre</li>
+    </ul>
+    <div class="callout info">
+      <span class="callout-icon">📊</span>
+      <p>El archivo Excel está listo para adjuntar en reportes contables o compartir con el contador sin necesidad de transcribir datos manualmente.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 11 REPORTES ══════════════════ -->
+<div class="section" id="s-reportes">
+  <div class="section-header">
+    <div class="section-icon indigo">📈</div>
+    <div>
+      <div class="section-title">11. Módulo de Reportes</div>
+      <div class="section-subtitle">Visibilidad real del negocio — sin hojas de cálculo, sin estimaciones</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>¿Por qué importan los reportes?</h3>
+    <p>Sin un sistema, los dueños y supervisores de negocios toman decisiones basadas en memoria o en cuadernos. FiyiPOS convierte cada venta en información accionable al instante:</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#eff6ff;color:#3b82f6;">🤔</div>
+        <div>
+          <div class="feature-card-title">¿Cuánto gané hoy?</div>
+          <div class="feature-card-desc">El tab <strong>Resumen</strong> muestra ventas totales, cantidad de tickets, ticket promedio e impuestos de cualquier rango de fechas, en segundos.</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#f0fdf4;color:#16a34a;">📦</div>
+        <div>
+          <div class="feature-card-title">¿Qué conviene reponer?</div>
+          <div class="feature-card-desc"><strong>Top Productos</strong> ordena los artículos por cantidad vendida. Identificá en un vistazo qué se agota rápido y qué no rota.</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#fef3c7;color:#d97706;">👤</div>
+        <div>
+          <div class="feature-card-title">¿Quién vende más?</div>
+          <div class="feature-card-desc"><strong>Por Operador</strong> compara tickets y totales por cajero. Útil para evaluar desempeño o detectar turnos con baja actividad.</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-icon" style="background:#fdf4ff;color:#9333ea;">🧾</div>
+        <div>
+          <div class="feature-card-title">¿Cuánto me costó vender?</div>
+          <div class="feature-card-desc">El resumen incluye <strong>COGS y margen bruto</strong>, incluyendo combos. Sabés exactamente cuánto ganaste neto sin calcularlo a mano.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="report-tabs-visual">
+      <div class="rtab active">Resumen</div>
+      <div class="rtab">Top Productos</div>
+      <div class="rtab">Por Operador</div>
+      <div class="rtab">Tickets</div>
+    </div>
+
+    <table style="margin-top:14px;">
+      <thead><tr><th>Tab</th><th>Qué muestra</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Resumen</strong></td><td>Total de ventas, número de tickets, ticket promedio e impuestos del período</td></tr>
+        <tr><td><strong>Top Productos</strong></td><td>Los productos más vendidos ordenados por cantidad</td></tr>
+        <tr><td><strong>Por Operador</strong></td><td>Desempeño individual de cada cajero: tickets y total vendido</td></tr>
+        <tr><td><strong>Tickets</strong></td><td>Lista detallada de todas las ventas del período: folio, fecha, operador, cliente y total</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Generar un reporte</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Seleccioná el <strong>rango de fechas</strong> (Desde / Hasta).</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Hacé clic en <strong>Generar</strong>. Los datos se filtran por la sucursal activa.</div></div>
+    </div>
+
+    <h3>Descarga de informes</h3>
+    <p>Cada tab del módulo tiene su propio botón de descarga <strong>Excel</strong>. Con un clic obtenés el informe del período seleccionado listo para compartir con el contador, el dueño o el área de compras:</p>
+    <table>
+      <thead><tr><th>Tab</th><th>Qué se descarga</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Resumen</strong></td><td>Totales del período: ventas, tickets, ticket promedio, impuestos, COGS y margen</td></tr>
+        <tr><td><strong>Top Productos</strong></td><td>Ranking completo de productos con cantidad vendida y total en dinero</td></tr>
+        <tr><td><strong>Por Operador</strong></td><td>Tabla de desempeño por cajero: tickets procesados y monto total</td></tr>
+        <tr><td><strong>Tickets</strong></td><td>Listado detallado de todas las ventas: folio, fecha, operador, cliente y total</td></tr>
+      </tbody>
+    </table>
+    <div class="callout success">
+      <span class="callout-icon">✅</span>
+      <p>Los archivos Excel reemplazan el trabajo manual de pasar datos a una hoja de cálculo al final del día o la semana. El historial queda siempre disponible — podés generar reportes de meses anteriores en cualquier momento.</p>
+    </div>
+
+    <h3>Ver ticket individual desde Reportes</h3>
+    <p>En el tab <strong>Tickets</strong>, hacé clic en cualquier fila para abrir el ticket digital completo de esa venta: desglose de artículos, totales, método de pago y pie de ticket. Las ventas a crédito se identifican con un badge <span class="badge badge-purple">CRÉDITO</span> en la lista.</p>
+
+    <h3>Cálculo de costo (COGS)</h3>
+    <p>Los reportes de Corte de Caja y el módulo de Reportes calculan el <strong>costo de mercancía vendida (COGS)</strong> contemplando:</p>
+    <ul>
+      <li><strong>Productos regulares</strong>: se usa el costo registrado en el momento de la venta (<em>snapshot</em>) para máxima precisión histórica.</li>
+      <li><strong>Combos / Promociones</strong>: se suma el costo de cada componente del combo (cantidad de componente × costo unitario), multiplicado por la cantidad vendida.</li>
+    </ul>
+    <div class="callout info">
+      <span class="callout-icon">💡</span>
+      <p>El costo snapshot se captura automáticamente al confirmar cada venta, garantizando que los reportes históricos no se vean afectados por cambios de costo posteriores.</p>
+    </div>
+
+    <h3>Indicadores COGS con IVA y sin IVA</h3>
+    <p>Tanto el informe descargable de <strong>Reportes</strong> (tab Ganancias) como el de <strong>Corte de Caja</strong> muestran la rentabilidad del período calculada sobre dos bases:</p>
+    <table>
+      <thead><tr><th>Indicador</th><th>Qué representa</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Ventas con IVA</strong></td><td>Total facturado al cliente, impuesto incluido (<code>Sale.Total</code>)</td></tr>
+        <tr><td><strong>Ventas sin IVA</strong></td><td>Total neto de impuesto (<code>Sale.Total − Sale.TaxAmount</code>)</td></tr>
+        <tr><td><strong>Costo de productos (COGS)</strong></td><td>Igual en ambas bases: el costo de mercancía no incluye IVA</td></tr>
+        <tr><td><strong>Ganancia / Margen bruto (sin IVA)</strong></td><td>Ventas sin IVA − COGS. <strong>Indicador contable recomendado</strong>, ya que el IVA cobrado no es ingreso propio.</td></tr>
+        <tr><td><strong>Ganancia / Margen bruto (con IVA)</strong></td><td>Ventas con IVA − COGS. Se muestra como referencia adicional.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ 12 OPERADORES ══════════════════ -->
+<div class="section" id="s-operadores">
+  <div class="section-header">
+    <div class="section-icon sky">👤</div>
+    <div>
+      <div class="section-title">12. Módulo de Operadores</div>
+      <div class="section-subtitle">Alta y gestión de usuarios — Acceso: Administrador y Supervisor</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <ul>
+      <li><strong>Listar</strong> operadores asignados a la sucursal actual.</li>
+      <li><strong>Crear</strong> un nuevo operador con usuario, contraseña y rol (Cajero / Supervisor).</li>
+      <li><strong>Editar</strong> datos o cambiar contraseña.</li>
+      <li><strong>Activar / desactivar</strong> — los inactivos no pueden iniciar sesión.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════════════ 13 SUCURSALES ══════════════════ -->
+<div class="section" id="s-sucursales">
+  <div class="section-header">
+    <div class="section-icon indigo">🏢</div>
+    <div>
+      <div class="section-title">13. Módulo de Sucursales</div>
+      <div class="section-subtitle">Gestión de tiendas — Acceso: solo Administrador</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <ul>
+      <li><strong>Listar</strong> todas las sucursales del negocio.</li>
+      <li><strong>Crear</strong> — al hacerlo, el sistema asigna automáticamente al administrador creador y siembra la configuración inicial.</li>
+      <li><strong>Editar</strong> nombre, dirección y otros datos.</li>
+      <li><strong>Activar / desactivar</strong> una sucursal.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════════════ 14 CONFIGURACIÓN ══════════════════ -->
+<div class="section" id="s-config">
+  <div class="section-header">
+    <div class="section-icon slate">⚙️</div>
+    <div>
+      <div class="section-title">14. Módulo de Configuración</div>
+      <div class="section-subtitle">Parámetros de la sucursal activa — Acceso: solo Administrador</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <h3>Ventas</h3>
+    <table>
+      <thead><tr><th>Parámetro</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Impuesto (%)</strong></td><td>Porcentaje de IVA o impuesto sobre el subtotal</td></tr>
+        <tr><td><strong>Moneda</strong></td><td>Símbolo de moneda en tickets (ej: $, €, Q)</td></tr>
+        <tr><td><strong>Stock negativo</strong></td><td>Si se permite vender sin stock disponible</td></tr>
+      </tbody>
+    </table>
+    <h3>Ticket / Folio</h3>
+    <table>
+      <thead><tr><th>Parámetro</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Prefijo del folio</strong></td><td>Texto antes del número (ej: "T-" genera T-000001)</td></tr>
+        <tr><td><strong>Nombre de la tienda</strong></td><td>Encabezado que aparece en el ticket impreso</td></tr>
+        <tr><td><strong>Mensaje de pie</strong></td><td>Texto al final del ticket (ej: "¡Gracias por su compra!")</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Notificaciones por email</h3>
+    <p>Cada sucursal puede configurar independientemente cuáles roles reciben alertas automáticas por correo:</p>
+    <table>
+      <thead><tr><th>Parámetro</th><th>Cuándo se envía</th><th>Destinatarios</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Notificar cajeros por stock bajo</strong></td><td>Al confirmar una venta que deja un producto por debajo del mínimo</td><td>Cajeros activos de la sucursal</td></tr>
+        <tr><td><strong>Notificar supervisores por stock bajo</strong></td><td>Ídem</td><td>Supervisores activos de la sucursal</td></tr>
+        <tr><td><strong>Notificar admins por stock bajo</strong></td><td>Ídem</td><td>Administradores activos de la sucursal</td></tr>
+        <tr><td><strong>Notificar por diferencia en corte de caja</strong></td><td>Al realizar un corte con diferencia distinta de $0</td><td>Supervisores y administradores de la sucursal</td></tr>
+      </tbody>
+    </table>
+    <div class="callout info">
+      <span class="callout-icon">💡</span>
+      <p>El correo del destinatario es el <strong>campo Usuario</strong> de cada operador (que funciona como dirección de email). El servidor SMTP debe estar configurado en la Configuración global del sistema.</p>
+    </div>
+
+    <h3>Mensaje global del sistema</h3>
+    <p>El administrador raíz puede publicar un <strong>aviso visible para todos los usuarios</strong> del sistema configurando la clave <code>special_message_from_root_to_all_users</code>. Cuando esta clave tiene contenido, el mensaje aparece como un banner en el encabezado de todas las sucursales y roles. Se usa para anunciar mantenimientos, actualizaciones o mensajes especiales. Para ocultarlo, basta con dejar el valor vacío.</p>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <p>Los cambios se guardan solo al hacer clic en <strong>Guardar</strong>. Si navegás sin guardar, se descartan.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 15 PROVEEDORES ══════════════════ -->
+<div class="section" id="s-proveedores">
+  <div class="section-header">
+    <div class="section-icon green">🚚</div>
+    <div>
+      <div class="section-title">15. Módulo de Proveedores</div>
+      <div class="section-subtitle">Directorio para asociar a las compras</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <ul>
+      <li><strong>Listar</strong> proveedores con búsqueda por nombre o contacto.</li>
+      <li><strong>Crear / Editar</strong> datos de contacto, dirección y notas.</li>
+      <li><strong>Exportar a Excel</strong> el directorio completo.</li>
+    </ul>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <p>Los proveedores son <strong>globales</strong> — no están limitados a una sola sucursal.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 16 FACTURACIÓN ══════════════════ -->
+<div class="section" id="s-facturacion">
+  <div class="section-header">
+    <div class="section-icon amber">🧾</div>
+    <div>
+      <div class="section-title">16. Facturación electrónica (AFIP)</div>
+      <div class="section-subtitle">Emisión de comprobantes con CAE directamente desde el punto de venta — Argentina</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>¿Qué es y por qué es obligatoria?</h3>
+    <p>En Argentina, la facturación electrónica es exigida por <strong>AFIP</strong> (Administración Federal de Ingresos Públicos) para la mayoría de los contribuyentes. Cada comprobante fiscal debe obtener un <strong>CAE</strong> (Código de Autorización Electrónico) emitido en tiempo real por los servidores de AFIP antes de entregarse al cliente. FiyiPOS se conecta directamente con los web services de AFIP (WSAA + WSFEv1) sin intermediarios.</p>
+
+    <h3>Tipos de comprobante que emite FiyiPOS</h3>
+    <p>El tipo de factura se determina automáticamente según la condición fiscal del emisor y del receptor:</p>
+    <table>
+      <thead><tr><th>Tipo</th><th>Cuándo se emite</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Factura A</strong></td><td>Emisor Responsable Inscripto → cliente con CUIT (otro RI). Incluye desglose de IVA. Permite crédito fiscal al receptor.</td></tr>
+        <tr><td><strong>Factura B</strong></td><td>Emisor Responsable Inscripto → Consumidor Final o cliente sin CUIT (DNI). IVA incluido en el precio.</td></tr>
+        <tr><td><strong>Factura C</strong></td><td>Emisor Monotributista → cualquier receptor. Sin IVA discriminado.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Datos que FiyiPOS ya captura para facturar</h3>
+    <table>
+      <thead><tr><th>Dato</th><th>Dónde se carga</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CUIT del emisor</strong></td><td>Módulo Facturación → Configuración de la empresa (11 dígitos, sin guiones)</td></tr>
+        <tr><td><strong>Condición fiscal del emisor</strong></td><td>Módulo Facturación → campo Condición IVA (Monotributista / Responsable Inscripto)</td></tr>
+        <tr><td><strong>Número de Punto de Venta</strong></td><td>Módulo Facturación → campo PV (debe coincidir con el registrado en AFIP)</td></tr>
+        <tr><td><strong>CUIT / DNI del cliente receptor</strong></td><td>Módulo Clientes → campo CUIT/DNI. Si no se completa, el comprobante va a Consumidor Final.</td></tr>
+        <tr><td><strong>Artículos, cantidades y precios</strong></td><td>Se toman directamente del ticket de venta</td></tr>
+        <tr><td><strong>Alícuota de IVA</strong></td><td>Módulo Productos → campo Tasa de impuesto (0 %, 10,5 %, 21 %, 27 %)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Configuración inicial (una sola vez por sucursal)</h3>
+    <div class="callout info">
+      <span class="callout-icon">🔐</span>
+      <p>Para emitir en <strong>Producción</strong> es obligatorio cargar un <strong>certificado digital .pfx</strong> gestionado ante AFIP. Para pruebas basta con activar el modo <strong>Homologación</strong> — el sistema genera comprobantes simulados sin conectarse a AFIP.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Registrar un Punto de Venta</strong> en el portal de AFIP (<em>Servicios en Línea → Administración de Puntos de Venta y Domicilios</em>). Anotar el número asignado (ej: 3).</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Generar y obtener el certificado digital</strong>: en el portal de AFIP ingresar a <em>Administración de Certificados Digitales</em>, generar un certificado para el servicio <code>wsfe</code> y descargar el archivo <strong>.pfx</strong> junto con su contraseña.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">En FiyiPOS, ir al módulo <strong>Facturación → Configuración</strong>: ingresar CUIT, condición fiscal, número de PV, subir el archivo .pfx y su contraseña, y seleccionar ambiente <strong>Producción</strong>.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Activar el toggle <strong>Facturación habilitada</strong> y guardar. A partir de ese momento cada venta puede generar un comprobante con CAE válido.</div></div>
+    </div>
+
+    <h3>Flujo de emisión en cada venta</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Después de confirmar el cobro, el operador hace clic en <strong>Emitir factura</strong> desde el ticket.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">FiyiPOS determina el tipo de comprobante (A / B / C) según la condición fiscal del emisor y el CUIT del cliente.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">El sistema se autentica con AFIP (WSAA), obtiene un token/sign y consulta el último número de comprobante.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Se solicita el <strong>CAE</strong> a AFIP (WSFEv1). Si AFIP responde <code>A</code> (Aprobado), el comprobante queda autorizado con número, CAE y fecha de vencimiento del CAE.</div></div>
+      <div class="step"><div class="step-num">5</div><div class="step-body">Se genera el comprobante con el <strong>código QR de AFIP</strong> (verificable en <em>comprobantes.afip.gob.ar</em>) para entregar al cliente.</div></div>
+    </div>
+
+    <h3>Información que queda registrada por comprobante</h3>
+    <table>
+      <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Número de comprobante</strong></td><td>Formato PV-NNNNNNNN (ej: 0003-00000042)</td></tr>
+        <tr><td><strong>CAE</strong></td><td>Código de 14 dígitos otorgado por AFIP. Sin CAE la factura no tiene validez fiscal.</td></tr>
+        <tr><td><strong>Vencimiento del CAE</strong></td><td>Fecha límite para la validez del comprobante (generalmente 10 días desde la emisión)</td></tr>
+        <tr><td><strong>Tipo de comprobante</strong></td><td>Factura A (1), B (6) o C (11)</td></tr>
+        <tr><td><strong>Resultado AFIP</strong></td><td><code>A</code> = Aprobado, <code>R</code> = Rechazado</td></tr>
+        <tr><td><strong>Ambiente</strong></td><td>Homologación (prueba) o Producción (real)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <p>El certificado .pfx tiene fecha de <strong>vencimiento anual</strong>. Cuando vence hay que renovarlo en AFIP y volver a cargarlo en FiyiPOS. El sistema muestra la fecha de vencimiento del certificado en la pantalla de configuración y bloquea la emisión si ya venció.</p>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">🧪</span>
+      <p><strong>Modo Homologación sin certificado</strong>: permite practicar la emisión de facturas sin conectarse a AFIP. Los comprobantes generados tienen estado <em>demo</em> y no tienen validez fiscal. Ideal para capacitar al equipo antes de pasar a Producción.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 17 BILLING ══════════════════ -->
+<div class="section" id="s-billing">
+  <div class="section-header">
+    <div class="section-icon red">💳</div>
+    <div>
+      <div class="section-title">17. Billing y vencimiento</div>
+      <div class="section-subtitle">Control de licencia por sucursal</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>El sistema incluye un control de vencimiento por sucursal. Cuando la fecha de vencimiento está próxima o ha pasado:</p>
+    <ul>
+      <li>Aparece una <strong>alerta</strong> en el encabezado indicando los días restantes o el estado vencido.</li>
+      <li>El enlace lleva a la página de pago <code>/pagar</code> donde se puede renovar el servicio.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════════════ 18 ESQUEMA DE COLORES ══════════════════ -->
+<div class="section" id="s-scheme">
+  <div class="section-header">
+    <div class="section-icon purple">🎨</div>
+    <div>
+      <div class="section-title">18. Esquema de colores</div>
+      <div class="section-subtitle">Tema claro / oscuro y personalización de paleta — Acceso: Administrador</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>¿Qué es el Scheme Manager?</h3>
+    <p>El módulo <strong>Esquema de colores</strong> permite personalizar visualmente toda la interfaz del sistema sin tocar código. Los cambios se guardan en la base de datos de la sucursal y se aplican instantáneamente mediante variables CSS.</p>
+
+    <h3>Tema claro y tema oscuro</h3>
+    <p>El selector <strong>Tema claro / Tema oscuro</strong> en la parte superior del módulo cambia entre los dos conjuntos de colores. Cada tema tiene sus propios valores independientes. Al cambiar de tema, la vista previa de la derecha se actualiza en tiempo real para confirmar los colores antes de guardar.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">💡</span>
+      <p>El tema activo al momento de guardar queda registrado como predeterminado para todos los usuarios de esa sucursal.</p>
+    </div>
+
+    <h3>Variables de color personalizables</h3>
+    <div class="scm-vars-grid">
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#f0faf5;"></div><div><div class="scm-var-name">Fondo general</div><div class="scm-var-desc">Área principal de contenido</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#ffffff;border-color:#e2e8f0;"></div><div><div class="scm-var-name">Fondo de cards</div><div class="scm-var-desc">Tablas, modales y tarjetas</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#3A4656;"></div><div><div class="scm-var-name">Texto principal</div><div class="scm-var-desc">Etiquetas y contenido</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#64748b;"></div><div><div class="scm-var-name">Texto secundario</div><div class="scm-var-desc">Subtítulos y placeholders</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#1aacb1;"></div><div><div class="scm-var-name">Primario</div><div class="scm-var-desc">Botones, badges y acentos</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#148a8e;"></div><div><div class="scm-var-name">Primario oscuro</div><div class="scm-var-desc">Hover de botones</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#22c9ce;"></div><div><div class="scm-var-name">Primario claro</div><div class="scm-var-desc">Variante luminosa</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#d4f4f5;"></div><div><div class="scm-var-name">Primario suave</div><div class="scm-var-desc">Fondos de highlight</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#e2e8f0;"></div><div><div class="scm-var-name">Borde</div><div class="scm-var-desc">Divisores e inputs</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#4CAF50;"></div><div><div class="scm-var-name">Éxito</div><div class="scm-var-desc">Confirmaciones y activo</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#f59e0b;"></div><div><div class="scm-var-name">Alerta</div><div class="scm-var-desc">Advertencias</div></div></div>
+      <div class="scm-var-card"><div class="scm-swatch" style="background:#ef4444;"></div><div><div class="scm-var-name">Error / Inactivo</div><div class="scm-var-desc">Errores y estados negativos</div></div></div>
+    </div>
+
+    <h3>Presets rápidos de color primario</h3>
+    <p>Los presets cambian automáticamente el grupo completo de colores primarios (normal, oscuro, claro y suave) con una sola combinación preconfigurada y armónica:</p>
+    <div class="presets-grid">
+      <div class="preset-dot" style="background:#1aacb1;" title="Teal">T</div>
+      <div class="preset-dot" style="background:#3b82f6;" title="Azul">A</div>
+      <div class="preset-dot" style="background:#8b5cf6;" title="Violeta">V</div>
+      <div class="preset-dot" style="background:#16a34a;" title="Verde">V</div>
+      <div class="preset-dot" style="background:#f97316;" title="Naranja">N</div>
+      <div class="preset-dot" style="background:#e11d48;" title="Rosa">R</div>
+    </div>
+
+    <h3>Cómo personalizar colores</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Ingresá al módulo <strong>Esquema de colores</strong> desde la carpeta Administrador del menú lateral.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Elegí el tema a editar (claro u oscuro) con el selector superior.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Usá un <strong>preset rápido</strong> para cambiar toda la paleta primaria de un clic, o ajustá cada color individualmente con el selector de color o escribiendo el código hex.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">La <strong>vista previa en tiempo real</strong> del panel derecho refleja los cambios al instante, sin necesidad de guardar.</div></div>
+      <div class="step"><div class="step-num">5</div><div class="step-body">Cuando estés conforme, hacé clic en <strong>Guardar y aplicar</strong>. Los colores quedan en la base de datos y se activan en toda la interfaz.</div></div>
+    </div>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <p>El botón <strong>Restaurar defaults</strong> revierte todos los colores del tema actual a los valores originales del sistema. Esta acción <strong>no se puede deshacer</strong> sin volver a editar manualmente cada color.</p>
+    </div>
+
+    <h3>Valores por defecto del tema oscuro</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Color</th><th>Uso</th></tr></thead>
+      <tbody>
+        <tr><td>Fondo general</td><td><code>#0f172a</code></td><td>Fondo de toda la pantalla</td></tr>
+        <tr><td>Fondo de cards</td><td><code>#1e293b</code></td><td>Tablas, modales, cards</td></tr>
+        <tr><td>Texto principal</td><td><code>#e2e8f0</code></td><td>Texto visible sobre fondo oscuro</td></tr>
+        <tr><td>Texto secundario</td><td><code>#94a3b8</code></td><td>Labels y placeholders</td></tr>
+        <tr><td>Borde</td><td><code>#334155</code></td><td>Líneas divisoras y contornos</td></tr>
+        <tr><td>Primario</td><td><code>#1aacb1</code></td><td>Color de acento principal</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+<!-- ══════════════════ 19 ZOOM ══════════════════ -->
+<div class="section" id="s-zoom">
+  <div class="section-header">
+    <div class="section-icon sky">🔍</div>
+    <div>
+      <div class="section-title">19. Zoom de interfaz</div>
+      <div class="section-subtitle">Ajuste de escala global sin afectar el zoom del navegador</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <p>Los controles de zoom están ubicados en la parte inferior del menú lateral, junto al botón de tema claro/oscuro. Permiten agrandar o reducir toda la interfaz del POS de forma independiente al zoom del navegador, y la preferencia queda guardada para la próxima sesión.</p>
+
+    <h3>Niveles de zoom disponibles</h3>
+    <div class="zoom-levels">
+      <span class="zoom-chip">75%</span>
+      <span class="zoom-chip">80%</span>
+      <span class="zoom-chip">85%</span>
+      <span class="zoom-chip">90%</span>
+      <span class="zoom-chip">95%</span>
+      <span class="zoom-chip default">100% ← default</span>
+      <span class="zoom-chip">105%</span>
+      <span class="zoom-chip">110%</span>
+      <span class="zoom-chip">115%</span>
+      <span class="zoom-chip">120%</span>
+      <span class="zoom-chip">125%</span>
+    </div>
+
+    <h3>Cómo usar el zoom</h3>
+    <table>
+      <thead><tr><th>Acción</th><th>Cómo hacerlo</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Agrandar</strong></td><td>Hacé clic en el botón <strong>+</strong> en la parte inferior del menú lateral</td></tr>
+        <tr><td><strong>Reducir</strong></td><td>Hacé clic en el botón <strong>−</strong> en la parte inferior del menú lateral</td></tr>
+        <tr><td><strong>Ver nivel actual</strong></td><td>El porcentaje se muestra entre los dos botones</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout info">
+      <span class="callout-icon">💾</span>
+      <p>La preferencia de zoom se guarda automáticamente en el navegador (<code>localStorage</code>) y se restaura la próxima vez que se abre el sistema, incluso después de cerrar la pestaña.</p>
+    </div>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <p>El zoom de interfaz actúa sobre la variable CSS <code>--pos-zoom</code> y es <strong>independiente por dispositivo</strong>: cada computadora o navegador puede tener su propio nivel configurado.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ 20 CONSUMO INTERNO ══════════════════ -->
+<div class="section" id="s-consumo-interno">
+  <div class="section-header">
+    <div class="section-icon slate">📦</div>
+    <div>
+      <div class="section-title">20. Módulo de Consumo interno</div>
+      <div class="section-subtitle">Registro de productos consumidos por el propio Store (no vendidos)</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <p>Ubicado dentro de la carpeta <strong>Ventas</strong> del menú lateral. Disponible para los roles <strong>Cajero, Supervisor y Administrador</strong>. Sirve para registrar salidas de stock que no corresponden a una venta: consumo del personal, muestras, mermas o productos usados en preparación.</p>
+
+    <h3>KPIs del encabezado</h3>
+    <table>
+      <thead><tr><th>KPI</th><th>Qué muestra</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Cantidad de productos quitados</strong></td><td>Suma de las cantidades de todos los renglones de consumo, según los filtros aplicados</td></tr>
+        <tr><td><strong>Costo total</strong></td><td>Suma del costo (a precio de costo, no de venta) de todos los consumos filtrados</td></tr>
+        <tr><td><strong>Total de registros</strong></td><td>Cantidad de consumos internos registrados, según los filtros aplicados</td></tr>
+        <tr><td><strong>Consumos de hoy</strong></td><td>Cantidad de consumos registrados en el día actual</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Registrar un consumo interno</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Hacé clic en <strong>Nuevo consumo</strong>.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Buscá el producto por <strong>nombre o código de barras</strong> y hacé clic en el resultado para agregarlo a la lista.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Ajustá la <strong>cantidad</strong> de cada línea. El costo se toma automáticamente del <strong>precio de costo</strong> del producto.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Ingresá el <strong>motivo</strong> (obligatorio, ej: "Consumo del personal", "Muestra", "Rotura") y hacé clic en <strong>Confirmar consumo</strong>.</div></div>
+    </div>
+
+    <div class="callout success">
+      <span class="callout-icon">✅</span>
+      <p>Al confirmar: el stock se descuenta automáticamente y se genera un movimiento <span class="badge badge-red">OUT</span> en Inventario con referencia <code>CI-&lt;id&gt;</code>, igual que una salida por consumo.</p>
+    </div>
+
+    <h3>Filtros</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Filtrá por <strong>motivo u operador</strong> con el buscador de la barra de herramientas.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Usá los chips de <strong>Desde / Hasta</strong> para acotar por rango de fechas, y <strong>Limpiar fechas</strong> para quitar el filtro.</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ 21 MENÚ LATERAL ══════════════════ -->
+<div class="section" id="s-sidebar">
+  <div class="section-header">
+    <div class="section-icon teal">📂</div>
+    <div>
+      <div class="section-title">21. Menú lateral (SideBar)</div>
+      <div class="section-subtitle">Navegación por carpetas a la izquierda de la pantalla</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <p>El sistema cuenta con un <strong>menú lateral</strong> a la izquierda de la pantalla que concentra toda la navegación: agrupa los módulos en carpetas (<strong>Ventas, Catálogo, Contactos y Administrador</strong>), acceso directo al <strong>Dashboard</strong>, la <strong>Guía de uso</strong> y el botón <strong>Salir</strong>. Arriba muestra el logo, el <strong>selector de sucursal</strong> y el operador que atiende; abajo están los controles de <strong>zoom</strong> y el botón de <strong>tema claro/oscuro</strong>.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">🏪</span>
+      <p>Si tu usuario tiene acceso a más de una sucursal, el nombre del local (debajo de "FiyiPOS") es un <strong>botón desplegable</strong>: hacé clic para cambiar de sucursal sin salir del sistema.</p>
+    </div>
+
+    <h3>Cómo usarlo</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">Hacé clic en una <strong>carpeta</strong> (ej: Catálogo) para desplegar sus módulos, y luego en el módulo al que querés entrar. La sección activa queda resaltada.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Con el botón <strong>hamburguesa</strong> (☰) de la parte superior podés <strong>contraer</strong> el menú a una barra de solo iconos para ganar espacio de pantalla, ideal para ver más filas en las grillas.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Estando contraído, hacé clic en el ícono de una carpeta y el menú se <strong>expande automáticamente</strong> mostrando su contenido.</div></div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">🔐</span>
+      <p>El menú lateral <strong>respeta los permisos de tu rol</strong>: las carpetas y módulos a los que no tenés acceso no se muestran.</p>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">⌨️</span>
+      <p>Los atajos de teclado siguen funcionando igual: <span class="kbd">F1</span> Ventas, <span class="kbd">F2</span> Créditos, <span class="kbd">F3</span> Productos, <span class="kbd">F4</span> Inventario.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ 22 UNIDADES DE MEDIDA ══════════════════ -->
+<div class="section" id="s-unidades">
+  <div class="section-header">
+    <div class="section-icon green">📏</div>
+    <div>
+      <div class="section-title">22. Unidades de medida</div>
+      <div class="section-subtitle">Definí cómo se venden y miden tus productos (pieza, kg, litro...)</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <p>Cada sucursal administra su propio catálogo de <strong>unidades de medida</strong> (Pieza, Kilogramo, Litro, etc.), que luego se asignan a los productos desde el módulo <strong>Productos</strong>. El módulo está ubicado en la carpeta <strong>Administrador</strong> del menú lateral y es <strong>exclusivo del rol Administrador</strong> — los roles Cajero y Supervisor no lo ven.</p>
+
+    <h3>Campos de una unidad</h3>
+    <table>
+      <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Nombre</strong></td><td>Nombre completo, visible en el formulario de productos (ej: "Kilogramo")</td></tr>
+        <tr><td><strong>Abreviatura</strong></td><td>Texto corto que aparece en tickets y grillas (ej: "kg")</td></tr>
+        <tr><td><strong>Activa</strong></td><td>Solo las unidades activas aparecen para elegir al crear o editar un producto</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout info">
+      <span class="callout-icon">🏪</span>
+      <p>Toda sucursal nueva recibe automáticamente 6 unidades por defecto: <strong>Pieza (pz), Kilogramo (kg), Litro (L), Metro (m), Caja (cja) y Paquete (paq)</strong>. A partir de ahí podés editarlas, desactivarlas o crear las que necesites — son independientes entre sucursales.</p>
+    </div>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <p>Si eliminás una unidad que ya está asignada a productos, esos productos quedan <strong>sin unidad de medida</strong> (no se eliminan ni se bloquean). Si solo querés dejar de usarla para nuevos productos, es más seguro <strong>desactivarla</strong> en lugar de eliminarla.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ FAQ ══════════════════ -->
+<div class="section" id="s-faq">
+  <div class="section-header">
+    <div class="section-icon indigo">❓</div>
+    <div>
+      <div class="section-title">Preguntas frecuentes</div>
+      <div class="section-subtitle">Dudas comunes de operación</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <table>
+      <thead><tr><th>Pregunta</th><th>Respuesta</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>¿Puedo tener la misma cuenta en varias sucursales?</strong></td>
+          <td>Sí. El administrador puede asignar un usuario a múltiples sucursales desde el módulo de Operadores.</td>
+        </tr>
+        <tr>
+          <td><strong>¿El stock se actualiza automáticamente?</strong></td>
+          <td>Sí. Venta confirmada → descuenta stock. Devolución confirmada → restaura stock. Compra confirmada → incrementa stock.</td>
+        </tr>
+        <tr>
+          <td><strong>¿Qué pasa si escaneo un código que no existe?</strong></td>
+          <td>El sistema muestra un aviso de "Producto no encontrado" y no agrega nada al carrito.</td>
+        </tr>
+        <tr>
+          <td><strong>¿Se puede vender con stock en cero?</strong></td>
+          <td>Depende de la configuración. Si <strong>Stock negativo</strong> está habilitado, sí. Si no, la venta no puede confirmarse hasta tener stock suficiente.</td>
+        </tr>
+        <tr>
+          <td><strong>¿Los reportes incluyen devoluciones?</strong></td>
+          <td>No. Los reportes muestran ventas brutas. Las devoluciones se gestionan en su propio módulo y afectan el stock, pero no se descuentan en los totales de Reportes.</td>
+        </tr>
+        <tr>
+          <td><strong>¿Cómo imprimo el ticket?</strong></td>
+          <td>Después de confirmar la venta aparece el ticket en pantalla. Hacé clic en <strong>Imprimir</strong> — el sistema usa el modo de impresión del navegador, optimizado para papel de 72mm.</td>
+        </tr>
+        <tr>
+          <td><strong>¿Cómo veo los tickets anteriores sin hacer una nueva venta?</strong></td>
+          <td>Usá el tab <strong>Tickets</strong> en el módulo de Reportes — seleccioná el rango de fechas, generá y hacé clic en cualquier fila para ver el ticket completo.</td>
+        </tr>
+        <tr>
+          <td><strong>¿Se puede ver el cambio a devolver cuando el cliente paga con un billete de mayor valor?</strong></td>
+          <td>Sí. En el modal de cobro, al seleccionar <strong>Efectivo</strong> como método de pago, aparece el campo <strong>Monto recibido</strong>. Ingresá el importe que entrega el cliente y el sistema calcula e imprime automáticamente el <strong>cambio exacto</strong> en el ticket. El campo acepta cualquier valor mayor al total — por ejemplo, si el total es $850 y el cliente entrega $1.000, el sistema muestra "Cambio: $150".</td>
+        </tr>
+        <tr>
+          <td><strong>Las letras se ven muy chicas o muy grandes, ¿cómo lo resuelvo?</strong></td>
+          <td>FiyiPOS tiene un control de <strong>zoom de interfaz</strong> independiente del zoom del navegador, ubicado en la parte inferior del menú lateral. Usá los botones <strong>+</strong> y <strong>−</strong> para ajustar la escala entre 75 % y 125 % en pasos de 5 %. El porcentaje elegido queda guardado en el dispositivo y se restaura automáticamente la próxima vez que abrís el sistema. Cada computadora puede tener su propio nivel.</td>
+        </tr>
+        <tr>
+          <td><strong>¿Qué clase de información traen los reportes del sistema?</strong></td>
+          <td>
+            El módulo <strong>Reportes</strong> ofrece cuatro vistas descargables en Excel para cualquier rango de fechas:<br>
+            • <strong>Resumen</strong>: total vendido, cantidad de tickets, ticket promedio, impuestos, costo de mercancía (COGS) y margen bruto.<br>
+            • <strong>Top Productos</strong>: ranking por cantidad vendida y dinero generado.<br>
+            • <strong>Por Operador</strong>: desempeño individual de cada cajero.<br>
+            • <strong>Tickets</strong>: listado completo con folio, fecha, operador, cliente y total.<br>
+            El módulo <strong>Corte de Caja</strong> genera su propio informe por jornada: desglose por método de pago, COGS, fondo inicial, efectivo contado y diferencia. También descargable en Excel.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>¿Cuáles son las variables a tener en cuenta para hacer un corte de caja exitoso?</strong></td>
+          <td>
+            Para que el corte cierre con diferencia $0, hay que contemplar <strong>todos</strong> los movimientos de efectivo del turno:<br>
+            1. <strong>Fondo de caja inicial</strong>: el dinero que había en la caja antes de abrir.<br>
+            2. <strong>Ventas en efectivo</strong>: el sistema las suma automáticamente.<br>
+            3. <strong>Abonos de crédito en efectivo</strong>: se registran solos al confirmar un abono con método efectivo.<br>
+            4. <strong>Movimientos manuales</strong>: cualquier retiro o ingreso de efectivo (gastos, vueltos de billetes grandes, etc.) debe registrarse en el módulo <strong>Movimientos de Caja</strong> antes de hacer el corte.<br>
+            Al final del turno, contá el efectivo físico, ingresalo en el campo correspondiente y el sistema calcula la diferencia. Si todo fue registrado correctamente, la diferencia debe ser exactamente $0.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Los cajeros tienen el rol más bajo, ¿pueden manipular el sistema para sacar ventaja personal?</strong></td>
+          <td>
+            El rol <strong>Cajero</strong> tiene permisos muy acotados por diseño:<br>
+            • <strong>No puede acceder a Productos ni Promociones</strong>: no puede modificar precios ni crear descuentos.<br>
+            • <strong>No puede acceder a Configuración ni Sucursales</strong>: no puede cambiar parámetros del sistema.<br>
+            • <strong>No puede eliminar ni modificar cortes de caja ya realizados</strong>.<br>
+            Para mayor control, el administrador o supervisor puede revisar el tab <strong>Por Operador</strong> en Reportes para comparar el desempeño de cada cajero, y auditar el historial de cortes para detectar diferencias recurrentes.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>¿Cuál es el ciclo correcto de uso del sistema día a día?</strong></td>
+          <td>
+            El ciclo recomendado para cada jornada es:<br>
+            1. <strong>Al entrar</strong>: iniciar sesión, seleccionar la sucursal, verificar que el fondo de caja sea el acordado con el turno anterior.<br>
+            2. <strong>Durante el turno</strong>: registrar todas las ventas, abonos de crédito y cualquier movimiento de efectivo manual en el módulo Movimientos de Caja (salidas por gastos, ingresos extraordinarios).<br>
+            3. <strong>Al salir</strong>: contar el efectivo físico, ir a <strong>Corte de Caja</strong>, ingresar el fondo inicial y el efectivo contado, y <strong>realizar el corte</strong>. El objetivo es siempre una diferencia de $0. Si hay diferencia, investigar qué movimiento faltó registrar antes de cerrar.<br>
+            Nunca terminar un turno sin hacer el corte — sin él, el próximo operador no tiene una base confiable.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>¿Qué se registra en el módulo Movimientos de Caja?</strong></td>
+          <td>
+            Registra todos los flujos de efectivo que <strong>no son ventas</strong>:<br>
+            • <strong>Entradas (IN)</strong>: fondo inicial del turno, ingresos extraordinarios, abonos de crédito en efectivo (estos últimos se crean automáticamente al registrar un abono).<br>
+            • <strong>Salidas (OUT)</strong>: retiros del dueño, pagos de gastos operativos (luz, insumos), cambio entregado fuera del sistema.<br>
+            Cada movimiento queda asociado al operador que lo registró, con fecha y descripción. El corte de caja suma todos estos movimientos junto con las ventas para calcular el efectivo esperado en caja.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>¿Cuáles son los módulos más importantes del sistema?</strong></td>
+          <td>
+            Los tres pilares que deben mantenerse siempre actualizados son:<br>
+            1. <strong>Productos</strong>: es la base de todo. Sin precios correctos, códigos de barras y stock real no es posible vender ni controlar el inventario. Mantenerlo actualizado es la prioridad número uno.<br>
+            2. <strong>Movimientos de Caja</strong>: registrar cada entrada y salida de efectivo que no sea una venta garantiza que el corte siempre cuadre y que la caja sea auditable.<br>
+            3. <strong>Corte de Caja</strong>: el cierre diario que valida que todo lo registrado en el sistema coincide con el efectivo físico. Es el mecanismo de control que detecta errores, omisiones o irregularidades a tiempo.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>¿Qué debo configurar apenas creo mi cuenta?</strong></td>
+          <td>
+            El orden recomendado para dejar el sistema listo para operar:<br>
+            1. <strong>Configuración</strong>: ajustar el símbolo de moneda, el porcentaje de impuesto por defecto, el prefijo del folio y el mensaje al pie del ticket.<br>
+            2. <strong>Productos</strong>: cargar el catálogo completo con nombre, precio de venta, precio de costo, código de barras, stock inicial y tasa de impuesto por artículo.<br>
+            3. <strong>Métodos de pago</strong>: verificar que los métodos disponibles reflejen los que el negocio acepta (efectivo, tarjeta, transferencia, etc.) y que el efectivo esté marcado como "cash".<br>
+            4. <strong>Clientes</strong>: si trabajás con crédito a clientes, crear los perfiles con límite de crédito habilitado.<br>
+            5. <strong>Proveedores y Compras</strong>: si querés que las reposiciones actualicen el stock automáticamente.<br>
+            6. <strong>Facturación (AFIP)</strong>: si necesitás emitir comprobantes fiscales, cargar el CUIT, número de Punto de Venta y el certificado .pfx.<br>
+            7. <strong>Esquema de colores</strong>: opcional, para adaptar la interfaz a la identidad visual del negocio.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ FOOTER ══════════════════ -->
+<div class="doc-footer">
+  FiyiPOS — Sistema web de punto de venta multi-sucursal &nbsp;·&nbsp; Blazor Server · .NET 10 · SQL Server<br>
+  Para soporte técnico contactá al administrador del sistema.
+</div>
+
+</div><!-- /.page -->
+</body>
+</html>

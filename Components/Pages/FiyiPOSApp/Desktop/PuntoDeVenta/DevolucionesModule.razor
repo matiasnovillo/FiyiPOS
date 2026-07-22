@@ -1,0 +1,536 @@
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.ReturnSaleBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.ReturnSaleBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.ReturnSaleBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.ReturnSaleDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SaleDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+
+@inject ReturnSaleRepository returnSaleRepository
+@inject SaleRepository saleRepository
+@inject CashMovementRepository cashMovementRepository
+@inject PosSessionService posSessionService
+@inject IJSRuntime JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">DEVOLUCIONES</div>
+    <div class="header-sub">Registrá devoluciones por número de ticket y consultá el historial completo.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total devoluciones</div>
+        <div class="stat-value">@_history.Count</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Monto total devuelto</div>
+        <div class="stat-value">$@_history.Sum(r => r.Total).ToString("N2")</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Ítems devueltos</div>
+        <div class="stat-value">@_history.Sum(r => r.ItemCount)</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Hoy</div>
+        <div class="stat-value">@_history.Count(r => r.ReturnDate.Date == DateTime.Today)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Filtrar por ticket o motivo..."
+               @bind="_historyFilter" @bind:event="oninput" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="OpenNewReturnModal">
+        <i class="fas fa-plus"></i> Nueva devolución
+    </button>
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loadingHistory)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando historial...</p>
+        </div>
+    }
+    else if (!_filteredHistory.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-undo-alt"></i>
+            <p>@(_historyFilter.Length > 0 ? "Sin resultados" : "Sin devoluciones registradas")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Ticket original</th>
+                    <th>Fecha devolución</th>
+                    <th>Ítems</th>
+                    <th>Total devuelto</th>
+                    <th>Motivo</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _filteredHistory)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:#dc2626;">
+                                    <i class="fas fa-undo-alt" style="font-size:.7rem;"></i>
+                                </div>
+                                <div>
+                                    <div class="fs-6" style="font-weight:600;">@r.TicketNumber</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">@r.ReturnDate.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>
+                            <button class="abtn abtn-primary" @onclick="() => ShowReturnDetailAsync(r)">
+                                <i class="fas fa-eye"></i> @r.ItemCount ítem@(r.ItemCount != 1 ? "s" : "")
+                            </button>
+                        </td>
+                        <td class="fs-6">
+                            <strong style="color:var(--pos-danger);">-$@r.Total.ToString("N2")</strong>
+                        </td>
+                        <td class="fs-6" style="color:var(--text-muted);">
+                            @(string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason)
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── MODAL: Nueva devolución ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:680px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-undo-alt me-2"></i>Nueva devolución</span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-section">Buscar ticket de venta</div>
+
+                <div style="display:flex;gap:.5rem;align-items:center;">
+                    <div class="search-bar" style="flex:1;">
+                        <i class="fas fa-receipt"></i>
+                        <input type="text" placeholder="Número de ticket (ej: T-000042)"
+                               @bind="_ticketSearch"
+                               @onkeyup="OnTicketKeyUp" />
+                    </div>
+                    <button class="abtn abtn-primary" @onclick="SearchTicketAsync" disabled="@_searching">
+                        <i class="fas @(_searching ? "fa-spinner fa-spin" : "fa-search")"></i>
+                        Buscar
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_searchError))
+                {
+                    <p class="fs-6" style="color:var(--pos-danger);margin-top:.4rem;">
+                        <i class="fas fa-exclamation-triangle me-1"></i>@_searchError
+                    </p>
+                }
+
+                @if (_foundSale != null)
+                {
+                    <div class="cr-notes-box" style="margin-top:.7rem;">
+                        <i class="fas fa-receipt me-1"></i>
+                        <strong>@_foundSale.TicketNumber</strong>
+                        — @_foundSale.SaleDate.ToString("dd/MM/yyyy HH:mm")
+                        — Total original: <strong>$@_foundSale.Total.ToString("N2")</strong>
+                    </div>
+
+                    <div class="panel-section" style="margin-top:.8rem;">Artículos a devolver</div>
+
+                    @foreach (var line in _lines)
+                    {
+                        <div class="dev-item-row @(line.Selected ? "selected" : "")">
+                            <input type="checkbox" @bind="line.Selected" class="dev-item-check" />
+                            <div class="dev-item-name">@line.ProductNameSnapshot</div>
+                            <div class="dev-item-qty-wrap">
+                                <input type="number" class="dev-item-qty-input"
+                                       min="@(line.AllowFractional ? "0.01" : "1")"
+                                       max="@line.MaxQuantity"
+                                       step="@(line.AllowFractional ? "0.01" : "1")"
+                                       @bind="line.ReturnQty"
+                                       disabled="@(!line.Selected)" />
+                                <span class="dev-item-max">/ @(line.AllowFractional ? line.MaxQuantity.ToString("N2") : ((long)line.MaxQuantity).ToString())</span>
+                            </div>
+                            <div class="dev-item-subtotal">$@line.Subtotal.ToString("N2")</div>
+                        </div>
+                    }
+
+                    <div class="panel-section" style="margin-top:.8rem;">Motivo</div>
+
+                    <div class="field" style="margin-bottom:.6rem;">
+                        <input type="text" @bind="_reason"
+                               placeholder="Ej: Talla incorrecta, producto defectuoso... (opcional)" />
+                    </div>
+
+                    <div class="cr-kpi-row">
+                        <div class="cr-kpi cr-kpi-highlight">
+                            <div class="cr-kpi-label">Total a devolver</div>
+                            <div class="cr-kpi-value">$@ReturnTotal.ToString("N2")</div>
+                        </div>
+                        <div class="cr-kpi">
+                            <div class="cr-kpi-label">Ítems seleccionados</div>
+                            <div class="cr-kpi-value">@SelectedCount</div>
+                        </div>
+                    </div>
+                }
+
+            </div>
+
+            @if (_foundSale != null)
+            {
+                <div class="panel-footer">
+                    <button class="abtn abtn-danger" @onclick="CloseModal">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button class="abtn abtn-success" @onclick="ConfirmReturnAsync"
+                            disabled="@(_saving || SelectedCount == 0)">
+                        <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                        @(_saving ? "Procesando..." : "Confirmar devolución")
+                    </button>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Detalle de productos devueltos ── -->
+@if (_showDetailModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:560px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-list me-2"></i>Productos devueltos — @_detailModalTitle</span>
+                <button class="panel-close fs-3" @onclick="() => _showDetailModal = false">×</button>
+            </div>
+
+            <div class="panel-body">
+                @if (_loadingDetails)
+                {
+                    <div class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Cargando...</p>
+                    </div>
+                }
+                else
+                {
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>P. Unitario</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in _detailLines)
+                            {
+                                <tr>
+                                    <td class="fs-6">@d.ProductNameSnapshot</td>
+                                    <td class="fs-6">@d.Quantity.ToString("N2")</td>
+                                    <td class="fs-6">$@d.UnitPrice.ToString("N2")</td>
+                                    <td class="fs-6"><strong>$@d.Subtotal.ToString("N2")</strong></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDetailModal = false">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool   _loadingHistory  = true;
+    private bool   _searching       = false;
+    private bool   _saving          = false;
+    private bool   _showModal       = false;
+    private bool   _showDetailModal = false;
+    private bool   _loadingDetails  = false;
+    private string _detailModalTitle = "";
+    private string _ticketSearch   = "";
+    private string _searchError    = "";
+    private string _reason         = "";
+    private string _historyFilter  = "";
+
+    private List<ReturnSaleLineDTO> _history     = new();
+    private Sale?                   _foundSale   = null;
+    private List<ReturnLineVM>      _lines       = new();
+    private List<ReturnSaleDetail>  _detailLines = new();
+
+    private IEnumerable<ReturnSaleLineDTO> _filteredHistory =>
+        string.IsNullOrWhiteSpace(_historyFilter)
+            ? _history
+            : _history.Where(r =>
+                r.TicketNumber.Contains(_historyFilter, StringComparison.OrdinalIgnoreCase) ||
+                (r.Reason != null && r.Reason.Contains(_historyFilter, StringComparison.OrdinalIgnoreCase)));
+
+    private decimal ReturnTotal   => _lines.Where(l => l.Selected).Sum(l => l.Subtotal);
+    private int     SelectedCount => _lines.Count(l => l.Selected);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _loadingHistory = true;
+        try
+        {
+            _history = await returnSaleRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loadingHistory = false;
+        }
+    }
+
+    private async Task ShowReturnDetailAsync(ReturnSaleLineDTO r)
+    {
+        _detailModalTitle = r.TicketNumber;
+        _detailLines      = new();
+        _showDetailModal  = true;
+        _loadingDetails   = true;
+        try
+        {
+            _detailLines = await returnSaleRepository.GetDetailsByReturnSaleIdAsync(r.ReturnSaleId);
+        }
+        finally
+        {
+            _loadingDetails = false;
+        }
+    }
+
+    private void OpenNewReturnModal()
+    {
+        _ticketSearch = "";
+        _searchError  = "";
+        _reason       = "";
+        _foundSale    = null;
+        _lines        = new();
+        _showModal    = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal    = false;
+        _foundSale    = null;
+        _lines        = new();
+        _ticketSearch = "";
+        _searchError  = "";
+        _reason       = "";
+    }
+
+    private async Task OnTicketKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchTicketAsync();
+    }
+
+    private async Task SearchTicketAsync()
+    {
+        _searchError = "";
+        string ticket = _ticketSearch.Trim().ToUpper();
+        if (string.IsNullOrEmpty(ticket)) return;
+
+        _searching = true;
+        _foundSale = null;
+        _lines     = new();
+
+        try
+        {
+            var sale = await saleRepository.GetOneByTicketNumberAsync(posSessionService.StoreId, ticket);
+            if (sale == null)
+            {
+                _searchError = $"No se encontró la venta '{ticket}' en esta sucursal.";
+                return;
+            }
+
+            var details = await saleRepository.GetDetailsBySaleIdAsync(sale.SaleId);
+            _foundSale = sale;
+            _lines = details.Select(d => new ReturnLineVM
+            {
+                ProductId           = d.ProductId ?? 0,
+                ProductNameSnapshot = d.ProductNameSnapshot,
+                MaxQuantity         = d.Quantity,
+                AllowFractional     = d.Quantity != Math.Floor(d.Quantity),
+                ReturnQty           = d.Quantity,
+                UnitPrice           = d.UnitPrice,
+                Selected            = true,
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _searchError = ex.Message;
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private async Task ConfirmReturnAsync()
+    {
+        if (_foundSale == null || SelectedCount == 0) return;
+
+        _saving = true;
+        try
+        {
+            var selectedLines = _lines
+                .Where(l => l.Selected && l.ReturnQty > 0)
+                .ToList();
+
+            if (!selectedLines.Any())
+            {
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "Seleccioná al menos un artículo con cantidad mayor a 0.", "warning");
+                return;
+            }
+
+            var header = new ReturnSale
+            {
+                SaleId       = _foundSale.SaleId,
+                StoreId      = posSessionService.StoreId,
+                SystemUserId = posSessionService.SystemUserId,
+                Reason       = string.IsNullOrWhiteSpace(_reason) ? null : _reason.Trim(),
+            };
+
+            var details = selectedLines.Select(l => new ReturnSaleDetail
+            {
+                ProductId           = l.ProductId,
+                ProductNameSnapshot = l.ProductNameSnapshot,
+                Quantity            = l.ReturnQty,
+                UnitPrice           = l.UnitPrice,
+                Subtotal            = Math.Round(l.ReturnQty * l.UnitPrice, 2),
+            }).ToList();
+
+            await returnSaleRepository.AddFullReturnAsync(header, details);
+
+            decimal returnTotal = details.Sum(d => d.Subtotal);
+            await cashMovementRepository.AddAsync(new CashMovement
+            {
+                StoreId      = posSessionService.StoreId,
+                SystemUserId = posSessionService.SystemUserId,
+                Type         = "OUT",
+                Amount       = returnTotal,
+                Reason       = $"Devolución del ticket {_foundSale.TicketNumber}",
+            });
+
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Devolución registrada",
+                $"Se devolvieron {selectedLines.Count} ítem(s), se actualizó el stock y se registró la salida de ${returnTotal:N2} en caja.",
+                "success");
+
+            CloseModal();
+            await LoadHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private class ReturnLineVM
+    {
+        public long    ProductId           { get; set; }
+        public string  ProductNameSnapshot { get; set; } = "";
+        public decimal MaxQuantity         { get; set; }
+        public bool    AllowFractional     { get; set; }
+        public decimal UnitPrice           { get; set; }
+        public bool    Selected            { get; set; }
+
+        private decimal _returnQty;
+        public decimal ReturnQty
+        {
+            get => _returnQty;
+            set => _returnQty = Math.Clamp(
+                AllowFractional ? value : Math.Floor(value),
+                0, MaxQuantity);
+        }
+
+        public decimal Subtotal => Selected ? Math.Round(ReturnQty * UnitPrice, 2) : 0;
+    }
+}

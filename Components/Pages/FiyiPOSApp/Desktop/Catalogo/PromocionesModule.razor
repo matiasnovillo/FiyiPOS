@@ -1,0 +1,675 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PromotionBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PromotionBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PromotionBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PromotionDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+@using System.Text.RegularExpressions
+
+@inject PromotionRepository promotionRepository
+@inject ProductRepository   productRepository
+@inject PosSessionService   posSessionService
+@inject IJSRuntime          JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">ADMINISTRACIÓN DE PROMOCIONES</div>
+    <div class="header-sub">Crea combos de productos con precio especial. Las promociones activas aparecen en el botón "Promos" del módulo de Ventas.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de promociones</div>
+        <div class="stat-value">@_all.Count</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Promociones activas</div>
+        <div class="stat-value">@_all.Count(p => p.Active)</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Promociones inactivas</div>
+        <div class="stat-value">@_all.Count(p => !p.Active)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nombre o descripción..."
+               @bind="_searchText" @oninput="OnSearch" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nueva Promoción
+    </button>
+</div>
+
+<!-- ── FILTER CHIPS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(_activeFilter == true ? "active" : "")"
+            @onclick='() => SetActiveFilter(true)'>
+        <i class="fas fa-check-circle"></i> Activas
+        <span>(@_all.Count(p => p.Active))</span>
+    </button>
+    <button class="filter-chip @(_activeFilter == false ? "active" : "")"
+            @onclick='() => SetActiveFilter(false)'>
+        <i class="fas fa-ban"></i> Inactivas
+        <span>(@_all.Count(p => !p.Active))</span>
+    </button>
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando promociones...</p>
+        </div>
+    }
+    else if (!_pagePromos.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-tags"></i>
+            <p>No hay promociones registradas</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Promoción</th>
+                    <th>Componentes</th>
+                    <th>Precio</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _pagePromos)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:@GetColor(p.PromotionId);">
+                                    <i class="fas fa-tags"></i>
+                                </div>
+                                <div>
+                                    <div class="entity-link" @onclick="() => OpenEditModal(p)">@p.Name</div>
+                                    @if (!string.IsNullOrWhiteSpace(p.Description))
+                                    {
+                                        <div class="fs-6">@p.Description</div>
+                                    }
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">
+                            @p.Details.Count componente@(p.Details.Count != 1 ? "s" : "")
+                        </td>
+                        <td class="fw-semibold">$@p.Price.ToString("N2")</td>
+                        <td>
+                            @if (p.Active)
+                            {
+                                <span class="credit-badge credit-yes fs-6">
+                                    <i class="fas fa-check-circle me-1"></i>Activa
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="credit-badge credit-no fs-6">Inactiva</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenEditModal(p)">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="abtn abtn-danger" @onclick="() => ShowDeleteConfirm(p)">
+                                <i class="fas fa-trash-alt"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_all.Count > 0)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+        @for (int i = winStart; i <= winEnd; i++)
+        {
+            int pg = i;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+<!-- ── MODAL: Nueva / Editar promoción ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:620px;">
+
+            <div class="panel-header">
+                <span>
+                    <i class="fas @(_editingId == null ? "fa-plus" : "fa-edit") me-2"></i>
+                    @(_editingId == null ? "Nueva promoción" : "Editar promoción")
+                </span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-grid">
+                    <div class="field field-full">
+                        <label>Nombre <span class="required-star">*</span></label>
+                        <input type="text" @bind="_form.Name"
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Name) ? "input-invalid" : "")" />
+                    </div>
+                    <div class="field field-full">
+                        <label>Descripción</label>
+                        <input type="text" @bind="_form.Description" />
+                    </div>
+                    <div class="field">
+                        <label>Precio del combo <span class="required-star">*</span></label>
+                        <input type="number" min="0" step="0.01" @bind="_form.Price"
+                               class="@(_showValidation && _form.Price <= 0 ? "input-invalid" : "")" />
+                    </div>
+                    <div class="field">
+                        <label class="check-label">
+                            <input type="checkbox" @bind="_form.Active" />
+                            Promoción activa (visible en ventas)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="panel-section">Componentes del combo</div>
+
+                <div class="promo-add-component-row">
+                    <div class="buscar-search-wrap">
+                        <i class="fas fa-search"></i>
+                        <input type="text"
+                               class="pos-input"
+                               placeholder="Buscar producto para agregar..."
+                               value="@_compSearch"
+                               @oninput="OnCompSearch"
+                               autocomplete="off" />
+                    </div>
+                    @if (_compResults.Any())
+                    {
+                        <div class="promo-comp-dropdown">
+                            @foreach (var prod in _compResults.Take(6))
+                            {
+                                <div class="promo-comp-option" @onclick="() => AddComponent(prod)">
+                                    <span class="promo-comp-name">@prod.Name</span>
+                                    <span class="promo-comp-price">$@prod.SalePrice.ToString("N2")</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (_form.Components.Any())
+                {
+                    <table class="promo-comp-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th class="promo-comp-qty-col">Cantidad</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var comp in _form.Components)
+                            {
+                                <tr>
+                                    <td>@comp.ProductName</td>
+                                    <td class="promo-comp-qty-col">
+                                        <input type="number"
+                                               class="qty-input"
+                                               min="@(comp.AllowFractional ? "0.01" : "1")"
+                                               step="@(comp.AllowFractional ? "0.01" : "1")"
+                                               @bind:get="comp.Quantity"
+                                               @bind:set="val => { if (val > 0) comp.Quantity = val; }"
+                                               @bind:event="onchange" />
+                                    </td>
+                                    <td>
+                                        <button class="row-delete-btn" @onclick="() => RemoveComponent(comp)" title="Quitar">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div class="promo-no-components">
+                        <i class="fas fa-box-open"></i>
+                        Agrega al menos un producto al combo
+                    </div>
+                }
+
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="SaveAsync" disabled="@_saving">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Confirmar eliminación ── -->
+@if (_showDeleteModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:420px;">
+            <div class="panel-header">
+                <span><i class="fas fa-trash-alt me-2"></i>Confirmar eliminación</span>
+                <button class="panel-close fs-3" @onclick="() => _showDeleteModal = false">×</button>
+            </div>
+            <div class="panel-body">
+                <p class="fs-6 text-nowrap">¿Eliminar la promoción <strong class="fs-6">@_selected?.Name</strong>?</p>
+                <p class="fs-6" style="color:var(--pos-danger)">Esta acción no se puede deshacer <i class="fas fa-exclamation-triangle"></i></p>
+            </div>
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDeleteModal = false">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="DeleteAsync">
+                    <i class="fas fa-trash-alt"></i> Sí, eliminar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    // ── State ────────────────────────────────────────────
+    private bool   _loading         = true;
+    private bool   _saving          = false;
+    private bool   _showValidation  = false;
+    private bool   _showModal       = false;
+    private bool   _showDeleteModal = false;
+    private string _modalError      = "";
+    private bool?  _activeFilter    = null;
+    private string _searchText      = "";
+
+    private List<PromotionVM> _all       = new();
+    private List<PromotionVM> _pagePromos = new();
+    private PromotionVM?      _selected  = null;
+    private long?             _editingId = null;
+
+    // ── Pagination ───────────────────────────────────────
+    private int       _pageIndex  = 1;
+    private const int _pageSize   = 10;
+    private int       _totalPages = 1;
+
+    // ── Form ─────────────────────────────────────────────
+    private PromoForm _form = new();
+
+    // ── Component search ─────────────────────────────────
+    private string        _compSearch  = "";
+    private List<Product> _allProducts = new();
+    private List<Product> _compResults = new();
+
+    private CancellationTokenSource cts = new();
+
+    // ── Lifecycle ────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var taskPromos   = promotionRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            var taskProducts = productRepository.GetAllActiveByStoreIdAsync(posSessionService.StoreId);
+            await Task.WhenAll(taskPromos, taskProducts);
+            _all         = taskPromos.Result;
+            _allProducts = taskProducts.Result;
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ── List / Filter ────────────────────────────────────
+    private async void OnSearch(ChangeEventArgs e)
+    {
+        cts.Cancel();
+        cts = new();
+
+        try
+        {
+            await Task.Delay(300, cts.Token);
+
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex = 1;
+            ApplyFilter();
+        }
+        catch (TaskCanceledException)
+        {
+            //User still writing, do nothing and wait for the next event to trigger
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Error", "Error al buscar promociones", "error");
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void SetActiveFilter(bool value)
+    {
+        _activeFilter = _activeFilter == value ? null : value;
+        _pageIndex    = 1;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        IEnumerable<PromotionVM> filtered = _all;
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            string[] Words = Regex
+                    .Replace(_searchText
+                    .Trim(), @"\s+", " ")
+                    .Split(" ");
+
+            filtered = filtered.Where(p => Words.Any(word => p.Name.Contains(word)) ||
+                Words.Any(word => p.Description.Contains(word)));
+        }
+
+        if (_activeFilter.HasValue)
+            filtered = filtered.Where(p => p.Active == _activeFilter.Value);
+
+        var list    = filtered.ToList();
+        _totalPages = Math.Max(1, (int)Math.Ceiling(list.Count / (double)_pageSize));
+        if (_pageIndex > _totalPages) _pageIndex = _totalPages;
+        _pagePromos = list.Skip((_pageIndex - 1) * _pageSize).Take(_pageSize).ToList();
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        ApplyFilter();
+    }
+
+    // ── Modals ───────────────────────────────────────────
+    private void OpenNewModal()
+    {
+        _editingId      = null;
+        _selected       = null;
+        _form           = new PromoForm();
+        _compSearch     = "";
+        _compResults    = new();
+        _showValidation = false;
+        _modalError     = "";
+        _showModal      = true;
+    }
+
+    private void OpenEditModal(PromotionVM p)
+    {
+        _editingId      = p.PromotionId;
+        _selected       = p;
+        _compSearch     = "";
+        _compResults    = new();
+        _showValidation = false;
+        _modalError     = "";
+        _form = new PromoForm
+        {
+            Name        = p.Name,
+            Description = p.Description,
+            Price       = p.Price,
+            Active      = p.Active,
+            Components  = p.Details.Select(d => new PromoComponentLine
+            {
+                ProductId       = d.ProductId,
+                ProductName     = d.ProductName,
+                Quantity        = d.Quantity,
+                AllowFractional = _allProducts.FirstOrDefault(pr => pr.ProductId == d.ProductId)?.AllowFractional ?? false,
+            }).ToList(),
+        };
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal  = false;
+        _modalError = "";
+    }
+
+    // ── Component search ─────────────────────────────────
+    private void OnCompSearch(ChangeEventArgs e)
+    {
+        _compSearch = e.Value?.ToString() ?? "";
+        if (_compSearch.Length < 2) { _compResults = new(); return; }
+        string q = _compSearch.ToLower();
+        _compResults = _allProducts
+            .Where(p => p.Name.ToLower().Contains(q) || p.Barcode.ToLower().Contains(q))
+            .ToList();
+    }
+
+    private void AddComponent(Product product)
+    {
+        var existing = _form.Components.FirstOrDefault(c => c.ProductId == product.ProductId);
+        if (existing != null)
+            existing.Quantity++;
+        else
+            _form.Components.Add(new PromoComponentLine
+            {
+                ProductId       = product.ProductId,
+                ProductName     = product.Name,
+                Quantity        = 1,
+                AllowFractional = product.AllowFractional,
+            });
+        _compSearch  = "";
+        _compResults = new();
+    }
+
+    private void RemoveComponent(PromoComponentLine comp) => _form.Components.Remove(comp);
+
+    // ── Save ─────────────────────────────────────────────
+    private async Task SaveAsync()
+    {
+        _showValidation = true;
+        _modalError     = "";
+
+        if (string.IsNullOrWhiteSpace(_form.Name) || _form.Price <= 0)
+        {
+            _modalError = "Completa los campos requeridos (Nombre y Precio).";
+            return;
+        }
+        if (!_form.Components.Any())
+        {
+            _modalError = "Agrega al menos un producto al combo.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var promo = new Promotion
+            {
+                PromotionId = _editingId ?? 0,
+                StoreId     = posSessionService.StoreId,
+                Name        = _form.Name.Trim(),
+                Description = _form.Description?.Trim() ?? "",
+                Price       = _form.Price,
+                Active      = _form.Active,
+            };
+
+            var details = _form.Components.Select(c => new PromotionDetail
+            {
+                ProductId           = c.ProductId,
+                ProductNameSnapshot = c.ProductName,
+                Quantity            = c.Quantity,
+            }).ToList();
+
+            await promotionRepository.SaveAsync(promo, details);
+
+            _all = await promotionRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            ApplyFilter();
+            _showModal = false;
+
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Listo", "Promoción guardada correctamente.", "success");
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Delete ───────────────────────────────────────────
+    private void ShowDeleteConfirm(PromotionVM p)
+    {
+        _selected        = p;
+        _showDeleteModal = true;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_selected == null) return;
+        _showDeleteModal = false;
+        try
+        {
+            await promotionRepository.DeleteAsync(_selected.PromotionId);
+            _all      = await promotionRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            _selected = null;
+            ApplyFilter();
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Listo", "Promoción eliminada.", "success");
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────
+    private static string GetColor(long id) => (id % 6) switch
+    {
+        0 => "#6366f1", 1 => "#0ea5e9", 2 => "#10b981",
+        3 => "#f59e0b", 4 => "#ef4444", _ => "#8b5cf6"
+    };
+
+    // ── Inner classes ────────────────────────────────────
+    private class PromoForm
+    {
+        public string  Name        { get; set; } = "";
+        public string  Description { get; set; } = "";
+        public decimal Price       { get; set; }
+        public bool    Active      { get; set; } = true;
+        public List<PromoComponentLine> Components { get; set; } = new();
+    }
+
+    private class PromoComponentLine
+    {
+        public long    ProductId       { get; set; }
+        public string  ProductName     { get; set; } = "";
+        public decimal Quantity        { get; set; } = 1;
+        public bool    AllowFractional { get; set; }
+    }
+}

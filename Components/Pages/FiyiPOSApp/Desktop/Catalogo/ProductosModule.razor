@@ -1,0 +1,1163 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.CategoryBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.UnitBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.CategoryBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.UnitBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+
+@inject CategoryRepository        categoryRepository
+@inject UnitRepository            unitRepository
+@inject ProductRepository         productRepository
+@inject PosSessionService         posSessionService
+@inject IWebHostEnvironment       env
+@inject IJSRuntime                JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">ADMINISTRACIÓN DE PRODUCTOS</div>
+    <div class="header-sub">Gestiona el catálogo de productos: precios, stock, códigos de barras y más.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de productos</div>
+        <div class="stat-value">@_totalRecordsInDb</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Productos online</div>
+        <div class="stat-value">@_totalOnline</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Activos/Inactivos</div>
+        <div class="stat-value">
+            <span style="color:var(--pos-success);">@_totalActive</span><span style="color:var(--pos-text-muted);">/</span><span style="color:var(--pos-danger);">@(_totalRecordsInDb - _totalActive)</span>
+        </div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Sin stock</div>
+        <div class="stat-value">@_totalNoStock</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Con stock bajo</div>
+        <div class="stat-value">@_totalLowStock</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nombre o código de barras..."
+               @bind="_searchText" @oninput="OnSearchInput" />
+    </div>
+    <button class="abtn abtn-warning" @onclick="OpenPriceChangeModal">
+        <i class="fas fa-tags"></i> Cambiar precios
+    </button>
+    <button class="abtn abtn-blue" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nuevo Producto
+    </button>
+</div>
+
+<!-- ── FILTROS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(_activeFilter == true ? "active" : "")"
+            @onclick='() => SetActiveFilter(true)'>
+        <i class="fas fa-check-circle"></i> Activos
+        <span>(@_totalActive)</span>
+    </button>
+    <button class="filter-chip @(_activeFilter == false ? "active" : "")"
+            @onclick='() => SetActiveFilter(false)'>
+        <i class="fas fa-ban"></i> Inactivos
+        <span>(@(_totalRecordsInDb - _totalActive))</span>
+    </button>
+    <button class="filter-chip @(_filterLowStock ? "active" : "")"
+            @onclick="ToggleLowStockFilter">
+        <i class="fas fa-exclamation-triangle"></i> Stock bajo
+        @if (_totalLowStock > 0) { <span>(@_totalLowStock)</span> }
+    </button>
+    <button class="filter-chip @(_filterNoBarcode ? "active" : "")"
+            @onclick="ToggleNoBarcodeFilter">
+        <i class="fas fa-barcode"></i> Sin código de barra
+        @if (_totalNoBarcode > 0) { <span>(@_totalNoBarcode)</span> }
+    </button>
+    <button class="filter-chip @(_filterNoStock ? "active" : "")"
+            @onclick="ToggleNoStockFilter">
+        <i class="fas fa-box"></i> Sin stock
+        @if (_totalNoStock > 0) { <span>(@_totalNoStock)</span> }
+    </button>
+    <button class="filter-chip @(_filterOnline ? "active" : "")"
+            @onclick="ToggleOnlineFilter">
+        <i class="fas fa-globe"></i> Se venden online
+        @if (_totalOnline > 0) { <span>(@_totalOnline)</span> }
+    </button>
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando productos...</p>
+        </div>
+    }
+    else if (!_pageProducts.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-box-open"></i>
+            <p>No hay productos registrados</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Categoría</th>
+                    <th>Precio venta</th>
+                    <th>Ganancia</th>
+                    <th>Stock</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _pageProducts)
+                {
+                    <tr class="@(!p.Active ? "row-inactive" : "")">
+                        <td>
+                            <div class="name-cell">
+                                <div class="prod-thumb">
+                                    @if (!string.IsNullOrWhiteSpace(p.FirstImageURL))
+                                    {
+                                        <img src="@p.FirstImageURL" alt="@p.Name" />
+                                    }
+                                    else
+                                    {
+                                        <span class="fa-stack" title="Sin imagen">
+                                            <i class="fas fa-image fa-stack-1x"></i>
+                                            <i class="fas fa-slash fa-stack-1x"></i>
+                                        </span>
+                                    }
+                                </div>
+                                <div>
+                                    <div class="entity-link" @onclick="() => OpenEditModal(p)">@p.Name</div>
+                                    <div class="fs-6">
+                                        @(string.IsNullOrWhiteSpace(p.Barcode) ? "Sin código" : p.Barcode)
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">@GetCategoryName(p.CategoryId)</td>
+                        <td class="fs-6">$@p.SalePrice.ToString("N2")</td>
+                        <td class="fs-6" style="font-weight:600;color:@(GetProfit(p) > 0 ? "var(--pos-success)" : GetProfit(p) < 0 ? "var(--pos-danger)" : "inherit");">
+                            $@GetProfit(p).ToString("N2")
+                        </td>
+                        <td>
+                            @if (p.Stock <= p.MinStock)
+                            {
+                                <span class="credit-badge credit-no">@p.Stock.ToString("N2")</span>
+                            }
+                            else
+                            {
+                                <span class="fs-6">@p.Stock.ToString("N2")</span>
+                            }
+                        </td>
+                        <td>
+                            @if (p.Active)
+                            {
+                                <span class="credit-badge credit-yes fs-6">
+                                    <i class="fas fa-check-circle me-1"></i>Activo
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="credit-badge credit-no fs-6">Inactivo</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenEditModal(p)">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="abtn @(p.Active ? "abtn-danger" : "abtn-success")"
+                                    @onclick="() => ToggleProductActive(p)">
+                                <i class="fas @(p.Active ? "fa-toggle-off" : "fa-toggle-on")"></i>
+                                @(p.Active ? "Desactivar" : "Activar")
+                            </button>
+                            <button class="abtn abtn-danger" @onclick="() => ShowDeleteModal(p)">
+                                <i class="fas fa-trash-alt"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_totalRecordsInDb > 0)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+        @for (int p = winStart; p <= winEnd; p++)
+        {
+            int pg = p;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+<!-- ── MODAL: Nuevo / Editar producto ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:680px;">
+
+            <div class="panel-header">
+                <span>
+                    <i class="fas @(_editingId == null ? "fa-plus" : "fa-edit") me-2"></i>
+                    @(_editingId == null ? "Nuevo producto" : "Editar producto")
+                </span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-grid">
+
+                    <div class="field field-full">
+                        <label>Nombre <span class="required-star">*</span></label>
+                        <input type="text" @bind="_form.Name"
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Name) ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field field-full">
+                        <label>Código de barras</label>
+                        <input type="text" @bind="_form.Barcode" />
+                    </div>
+
+                    <div class="field">
+                        <label>Categoría</label>
+                        <select @bind="_form.CategoryId">
+                            <option value="0">— Sin categoría —</option>
+                            @foreach (var cat in _categories)
+                            {
+                                <option value="@cat.CategoryId">@cat.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Unidad</label>
+                        <select @bind="_form.UnitId">
+                            <option value="0">— Sin unidad —</option>
+                            @foreach (var u in _units)
+                            {
+                                <option value="@u.UnitId">@u.Name (@u.Abbreviation)</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="field field-full">
+                        <label>Descripción</label>
+                        <textarea @bind="_form.Description" rows="2"></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label class="check-label">
+                            <input type="checkbox" @bind="_form.Active" />
+                            Producto activo
+                        </label>
+                    </div>
+
+                    <div class="field">
+                        <label class="check-label" title="@(_editingId != null ? "No se puede cambiar en productos existentes" : "")">
+                            <input type="checkbox" @bind="_form.AllowFractional" @bind:after="ResetStockFields"
+                                   disabled="@(_editingId != null)" />
+                            Permite venta fraccionada
+                            @if (_editingId != null)
+                            {
+                                <i class="fas fa-lock ms-1" style="font-size:.85rem;opacity:.5;" title="No se puede cambiar en productos existentes"></i>
+                            }
+                        </label>
+                    </div>
+
+                </div>
+
+                <div class="panel-section">Precios</div>
+                <div class="panel-grid">
+
+                    <div class="field">
+                        <label>Precio de venta <span class="required-star">*</span></label>
+                        <input type="number" min="0" step="0.01" @bind="_form.SalePrice"
+                               class="@(_showValidation && _form.SalePrice <= 0 ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field">
+                        <label>Precio de costo</label>
+                        <input type="number" min="0" step="0.01" @bind="_form.CostPrice" />
+                    </div>
+
+                    <div class="field">
+                        <label>Precio mayoreo</label>
+                        <input type="number" min="0" step="0.01" @bind="_form.WholesalePrice" />
+                    </div>
+
+                    <div class="field">
+                        <label>Tasa de impuesto (%)</label>
+                        <input type="number" min="0" step="0.01" @bind="_form.TaxRate" />
+                    </div>
+
+                </div>
+
+                <div class="panel-section">Inventario</div>
+                <div class="panel-grid">
+
+                    <div class="field">
+                        <label>Stock actual</label>
+                        <input type="number" min="0" step="@(_form.AllowFractional ? "0.01" : "1")" @bind="_form.Stock" />
+                    </div>
+
+                    <div class="field">
+                        <label>Stock mínimo</label>
+                        <input type="number" min="0" step="@(_form.AllowFractional ? "0.01" : "1")" @bind="_form.MinStock" />
+                    </div>
+
+                    <div class="field">
+                        <label>Stock máximo</label>
+                        <input type="number" min="0" step="@(_form.AllowFractional ? "0.01" : "1")" @bind="_form.MaxStock" />
+                    </div>
+
+                </div>
+
+                <div class="panel-section">Venta en línea</div>
+                <div class="panel-grid">
+
+                    <div class="field field-full">
+                        <label class="check-label">
+                            <input type="checkbox" @bind="_form.IsAvailableToSellOnline" />
+                            Disponible para vender online
+                            <i class="fas fa-globe"></i>
+                        </label>
+                    </div>
+
+                    <div class="field field-full">
+                        <label>Imagen del producto</label>
+                        <div class="prod-img-row">
+                            <div class="prod-img-preview">
+                                @if (!string.IsNullOrWhiteSpace(_imagePreviewUrl))
+                                {
+                                    <img src="@_imagePreviewUrl" alt="Vista previa del producto" />
+                                }
+                                else
+                                {
+                                    <i class="fas fa-image"></i>
+                                }
+                            </div>
+                            <div class="prod-img-input">
+                                <InputFile OnChange="OnProductImageSelected" accept=".png,.jpg,.jpeg" class="fs-6" />
+                                <div class="prod-img-badge">
+                                    <i class="fas fa-info-circle"></i>
+                                    Archivo .png o .jpg · máximo 5MB · imagen cuadrada con fondo transparente
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="SaveProducto" disabled="@_saving">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Confirmar eliminación ── -->
+@if (_showDeleteModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:420px;">
+            <div class="panel-header">
+                <span><i class="fas fa-trash-alt me-2"></i>Confirmar eliminación</span>
+                <button class="panel-close fs-3" @onclick="() => _showDeleteModal = false">×</button>
+            </div>
+            <div class="panel-body">
+                <p class="fs-6 text-nowrap">¿Eliminar el producto <strong class="fs-6">@_selected?.Name</strong>?</p>
+                <p class="fs-6" style="color:var(--pos-danger)">Esta acción no se puede deshacer <i class="fas fa-exclamation-triangle"></i></p>
+            </div>
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDeleteModal = false">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmDelete">
+                    <i class="fas fa-trash-alt"></i> Sí, eliminar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Cambiar precios masivamente ── -->
+@if (_showPriceModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:600px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-tags me-2"></i>Cambiar precios masivamente</span>
+                <button class="panel-close fs-3" @onclick="ClosePriceModal">×</button>
+            </div>
+
+            @if (!_pricePreviewReady)
+            {
+                <div class="panel-body">
+                    <div class="panel-grid">
+
+                        <div class="field field-full">
+                            <label>Categoría</label>
+                            <select @bind="_priceCategoryId">
+                                <option value="0">— Todas las categorías —</option>
+                                @foreach (var cat in _categories)
+                                {
+                                    <option value="@cat.CategoryId">@cat.Name</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label>Porcentaje de cambio</label>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <input type="number" step="0.01" @bind="_pricePercent"
+                                       style="width:100%;" placeholder="ej: 15 o -5" />
+                                <span style="font-weight:700;font-size:1rem;white-space:nowrap;">%</span>
+                            </div>
+                            <div style="font-size:.75rem;color:var(--pos-text-muted);margin-top:4px;">
+                                Positivo = aumento &nbsp;·&nbsp; Negativo = descuento
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label>Redondeo del precio resultante</label>
+                            <select @bind="_priceRounding">
+                                <option value="none">Sin redondeo (2 decimales exactos)</option>
+                                <option value=".00">Al número entero más cercano (ej: $94.00)</option>
+                                <option value=".99">Al .99 inferior (ej: $93.99)</option>
+                                <option value=".50">Al .50 más cercano (ej: $93.50)</option>
+                            </select>
+                        </div>
+
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_priceModalError))
+                    {
+                        <div class="dialog-error">
+                            <i class="fas fa-exclamation-triangle"></i> @_priceModalError
+                        </div>
+                    }
+                </div>
+
+                <div class="panel-footer">
+                    <button class="abtn abtn-danger" @onclick="ClosePriceModal">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button class="abtn abtn-primary" @onclick="ComputePricePreview" disabled="@_priceComputing">
+                        <i class="fas @(_priceComputing ? "fa-spinner fa-spin" : "fa-eye")"></i>
+                        @(_priceComputing ? "Calculando..." : "Previsualizar")
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="panel-body">
+                    <div style="font-size:.85rem;color:var(--pos-text-muted);margin-bottom:12px;">
+                        <strong>@_pricePreview.Count</strong> producto(s) ·
+                        @(_priceCategoryId == 0 ? "Todas las categorías" : GetCategoryName(_priceCategoryId)) ·
+                        @(_pricePercent >= 0 ? "+" : "")@_pricePercent.ToString("N2")% ·
+                        Redondeo: @GetRoundingLabel(_priceRounding)
+                    </div>
+
+                    @if (!_pricePreview.Any())
+                    {
+                        <div class="empty-state">
+                            <i class="fas fa-box-open"></i>
+                            <p>No hay productos en esa categoría.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="max-height:340px;overflow-y:auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th>Precio actual</th>
+                                        <th>Precio nuevo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in _pricePreview)
+                                    {
+                                        <tr>
+                                            <td class="fs-6">@row.Name</td>
+                                            <td class="fs-6">$@row.CurrentPrice.ToString("N2")</td>
+                                            <td class="fs-6" style="font-weight:600;color:@(row.NewPrice > row.CurrentPrice ? "var(--pos-success)" : row.NewPrice < row.CurrentPrice ? "var(--pos-danger)" : "inherit");">
+                                                $@row.NewPrice.ToString("N2")
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <div class="panel-footer">
+                    <button class="abtn abtn-danger" @onclick="() => _pricePreviewReady = false">
+                        <i class="fas fa-arrow-left"></i> Volver
+                    </button>
+                    <button class="abtn abtn-success" @onclick="ApplyPriceChanges"
+                            disabled="@(_priceSaving || !_pricePreview.Any())">
+                        <i class="fas @(_priceSaving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                        @(_priceSaving ? "Aplicando..." : $"Confirmar ({_pricePreview.Count} productos)")
+                    </button>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool   _loading         = true;
+    private bool   _filterLowStock  = false;
+    private bool   _filterNoBarcode = false;
+    private bool   _filterNoStock   = false;
+    private bool   _filterOnline    = false;
+    private bool   _showModal       = false;
+    private bool   _showDeleteModal = false;
+    private bool   _showValidation  = false;
+    private bool   _saving          = false;
+    private bool?  _activeFilter    = null;
+    private long?  _editingId       = null;
+    private string _searchText      = "";
+    private string _modalError      = "";
+
+    private List<Product>  _pageProducts     = new();
+    private long           _totalRecordsInDb = 0;
+    private int            _totalActive      = 0;
+    private int            _totalLowStock    = 0;
+    private int            _totalNoBarcode   = 0;
+    private int            _totalNoStock     = 0;
+    private int            _totalOnline      = 0;
+    private int            _pageIndex        = 1;
+    private const int      _pageSize         = 10;
+    private int            _totalPages       = 1;
+
+    private List<Category> _categories = new();
+    private List<Unit>     _units      = new();
+    private Product?       _selected;
+    private ProductFormVM  _form = new();
+
+    private const long MaxImageSizeBytes = 5 * 1024 * 1024;
+    private byte[]? _pendingImageBytes;
+    private string  _pendingImageExt = "";
+    private string  _imagePreviewUrl = "";
+
+    private CancellationTokenSource cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var taskCats  = categoryRepository.GetAllActiveAsync(posSessionService.StoreId);
+        var taskUnits = unitRepository.GetAllActiveAsync(posSessionService.StoreId);
+        await LoadProductos();
+        _categories = await taskCats;
+        _units      = await taskUnits;
+    }
+
+    private async Task LoadProductos()
+    {
+        _loading = true;
+        try
+        {
+            _totalActive    = await productRepository.CountActiveByStoreIdAsync(posSessionService.StoreId);
+            _totalLowStock  = await productRepository.CountLowStockByStoreIdAsync(posSessionService.StoreId);
+            _totalNoBarcode = await productRepository.CountNoBarcodeByStoreIdAsync(posSessionService.StoreId);
+            _totalNoStock   = await productRepository.CountNoStockByStoreIdAsync(posSessionService.StoreId);
+            _totalOnline    = await productRepository.CountOnlineByStoreIdAsync(posSessionService.StoreId);
+            await LoadPage();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadPage()
+    {
+        var result = await productRepository.GetAllPaginatedByStoreIdAsync(
+            posSessionService.StoreId, _searchText, _pageIndex, _pageSize, _filterLowStock, _activeFilter,
+            _filterNoBarcode, _filterNoStock, _filterOnline);
+
+        _totalRecordsInDb = result.TotalRecordsInDatabase;
+        _totalPages       = Math.Max(1, result.TotalPages);
+        _pageProducts     = result.ListProduct;
+
+        if (_pageProducts.Count == 0 && _pageIndex > 1)
+        {
+            _pageIndex = _totalPages;
+            result = await productRepository.GetAllPaginatedByStoreIdAsync(
+                posSessionService.StoreId, _searchText, _pageIndex, _pageSize, _filterLowStock, _activeFilter,
+                _filterNoBarcode, _filterNoStock, _filterOnline);
+            _pageProducts = result.ListProduct;
+        }
+    }
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        await LoadPage();
+    }
+
+    private async void OnSearchInput(ChangeEventArgs e)
+    {
+        cts.Cancel();
+        cts = new();
+        try
+        {
+            await Task.Delay(300, cts.Token);
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex  = 1;
+            await LoadPage();
+        }
+        catch (TaskCanceledException) { }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Error", "Error al buscar productos", "error");
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SetActiveFilter(bool value)
+    {
+        _activeFilter = _activeFilter == value ? null : value;
+        _pageIndex    = 1;
+        await LoadPage();
+    }
+
+    private async Task ToggleLowStockFilter()
+    {
+        _filterLowStock = !_filterLowStock;
+        _pageIndex      = 1;
+        await LoadPage();
+    }
+
+    private async Task ToggleNoBarcodeFilter()
+    {
+        _filterNoBarcode = !_filterNoBarcode;
+        _pageIndex       = 1;
+        await LoadPage();
+    }
+
+    private async Task ToggleNoStockFilter()
+    {
+        _filterNoStock = !_filterNoStock;
+        _pageIndex     = 1;
+        await LoadPage();
+    }
+
+    private async Task ToggleOnlineFilter()
+    {
+        _filterOnline = !_filterOnline;
+        _pageIndex    = 1;
+        await LoadPage();
+    }
+
+    private async Task ToggleProductActive(Product p)
+    {
+        p.Active = !p.Active;
+        await productRepository.UpdateAsync(p);
+        await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Éxito", p.Active ? "Producto activado." : "Producto desactivado.", "success");
+        await LoadProductos();
+    }
+
+    private string GetCategoryName(long? categoryId)
+    {
+        if (categoryId == null) return "—";
+        return _categories.FirstOrDefault(c => c.CategoryId == categoryId)?.Name ?? "—";
+    }
+
+    private static decimal GetProfit(Product p) => p.SalePrice - p.CostPrice;
+
+    private void OpenNewModal()
+    {
+        _editingId         = null;
+        _selected          = null;
+        _form              = new ProductFormVM();
+        _pendingImageBytes = null;
+        _pendingImageExt   = "";
+        _imagePreviewUrl   = "";
+        _modalError        = "";
+        _showValidation    = false;
+        _showModal         = true;
+    }
+
+    private void OpenEditModal(Product p)
+    {
+        _editingId = p.ProductId;
+        _selected  = p;
+        _form = new ProductFormVM
+        {
+            CategoryId      = p.CategoryId ?? 0,
+            UnitId          = p.UnitId     ?? 0,
+            Barcode         = p.Barcode,
+            Name            = p.Name,
+            Description     = p.Description,
+            SalePrice       = p.SalePrice,
+            CostPrice       = p.CostPrice,
+            WholesalePrice  = p.WholesalePrice ?? 0,
+            Stock           = p.Stock,
+            MinStock        = p.MinStock,
+            MaxStock        = p.MaxStock ?? 0,
+            TaxRate         = p.TaxRate,
+            AllowFractional = p.AllowFractional,
+            Active          = p.Active,
+            IsAvailableToSellOnline = p.IsAvailableToSellOnline,
+        };
+        _pendingImageBytes = null;
+        _pendingImageExt   = "";
+        _imagePreviewUrl   = p.FirstImageURL ?? "";
+        _modalError        = "";
+        _showValidation    = false;
+        _showModal         = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal  = false;
+        _modalError = "";
+    }
+
+    private async Task OnProductImageSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        string ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (ext is not (".png" or ".jpg" or ".jpeg"))
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Archivo inválido", "Solo se permiten imágenes .png o .jpg", NotificationTypeForJs.Error);
+            return;
+        }
+
+        if (file.Size > MaxImageSizeBytes)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Archivo muy grande", "La imagen no puede superar los 5MB", NotificationTypeForJs.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(MaxImageSizeBytes);
+        using var ms     = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _pendingImageBytes = ms.ToArray();
+        _pendingImageExt   = ext == ".jpeg" ? ".jpg" : ext;
+
+        string mime = _pendingImageExt == ".png" ? "image/png" : "image/jpeg";
+        _imagePreviewUrl = $"data:{mime};base64,{Convert.ToBase64String(_pendingImageBytes)}";
+    }
+
+    private async Task<string?> SavePendingImageAsync(string? previousImageUrl)
+    {
+        if (_pendingImageBytes == null) return null;
+
+        string folder = Path.Combine(env.WebRootPath, "uploads", "product");
+        Directory.CreateDirectory(folder);
+
+        string fileName = $"{Guid.NewGuid()}{_pendingImageExt}";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), _pendingImageBytes);
+
+        DeletePhysicalImage(previousImageUrl);
+
+        return $"/uploads/product/{fileName}";
+    }
+
+    private void DeletePhysicalImage(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl)) return;
+        try
+        {
+            string path = Path.Combine(env.WebRootPath, imageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (IOException) { /* la imagen huérfana no debe impedir guardar el producto */ }
+    }
+
+    private async Task SaveProducto()
+    {
+        _showValidation = true;
+        _modalError     = "";
+
+        if (string.IsNullOrWhiteSpace(_form.Name) || _form.SalePrice <= 0)
+        {
+            _modalError = "Completa los campos requeridos (Nombre y Precio de venta).";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_form.Barcode))
+        {
+            var all = await productRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            bool barcodeRepetido = _editingId == null
+                ? all.Any(p => p.Barcode.Equals(_form.Barcode.Trim(), StringComparison.OrdinalIgnoreCase))
+                : all.Any(p => p.ProductId != _editingId &&
+                               p.Barcode.Equals(_form.Barcode.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (barcodeRepetido)
+            {
+                _modalError = "Ya existe un producto con ese código de barras.";
+                return;
+            }
+        }
+
+        _saving = true;
+        try
+        {
+            string? newImageUrl = await SavePendingImageAsync(_selected?.FirstImageURL);
+
+            if (_editingId == null)
+            {
+                var nuevo = new Product
+                {
+                    StoreId         = posSessionService.StoreId,
+                    CategoryId      = _form.CategoryId == 0 ? null : _form.CategoryId,
+                    UnitId          = _form.UnitId     == 0 ? null : _form.UnitId,
+                    Barcode         = _form.Barcode.Trim(),
+                    Name            = _form.Name.Trim(),
+                    Description     = _form.Description.Trim(),
+                    SalePrice       = _form.SalePrice,
+                    CostPrice       = _form.CostPrice,
+                    WholesalePrice  = _form.WholesalePrice == 0 ? null : _form.WholesalePrice,
+                    Stock           = _form.Stock,
+                    MinStock        = _form.MinStock,
+                    MaxStock        = _form.MaxStock == 0 ? null : _form.MaxStock,
+                    TaxRate         = _form.TaxRate,
+                    AllowFractional = _form.AllowFractional,
+                    Active          = _form.Active,
+                    IsAvailableToSellOnline = _form.IsAvailableToSellOnline,
+                    FirstImageURL   = newImageUrl ?? string.Empty,
+                    CreatedAt       = DateTime.Now,
+                };
+                await productRepository.AddAsync(nuevo);
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Producto agregado correctamente.", "success");
+            }
+            else
+            {
+                _selected!.CategoryId      = _form.CategoryId == 0 ? null : _form.CategoryId;
+                _selected.UnitId           = _form.UnitId     == 0 ? null : _form.UnitId;
+                _selected.Barcode          = _form.Barcode.Trim();
+                _selected.Name             = _form.Name.Trim();
+                _selected.Description      = _form.Description.Trim();
+                _selected.SalePrice        = _form.SalePrice;
+                _selected.CostPrice        = _form.CostPrice;
+                _selected.WholesalePrice   = _form.WholesalePrice == 0 ? null : _form.WholesalePrice;
+                _selected.Stock            = _form.Stock;
+                _selected.MinStock         = _form.MinStock;
+                _selected.MaxStock         = _form.MaxStock == 0 ? null : _form.MaxStock;
+                _selected.TaxRate          = _form.TaxRate;
+                _selected.AllowFractional  = _form.AllowFractional;
+                _selected.Active           = _form.Active;
+                _selected.IsAvailableToSellOnline = _form.IsAvailableToSellOnline;
+                if (newImageUrl != null) _selected.FirstImageURL = newImageUrl;
+                _selected.UpdatedAt        = DateTime.Now;
+                await productRepository.UpdateAsync(_selected);
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Producto actualizado correctamente.", "success");
+            }
+
+            _showModal = false;
+            await LoadProductos();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ShowDeleteModal(Product p)
+    {
+        _selected        = p;
+        _showDeleteModal = true;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        _showDeleteModal = false;
+        if (_selected == null) return;
+        try
+        {
+            await productRepository.DeleteOneByProductIdAsync(_selected.ProductId);
+            DeletePhysicalImage(_selected.FirstImageURL);
+            _selected = null;
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", "Producto eliminado correctamente.", "success");
+            await LoadProductos();
+        }
+        catch (Exception ex)
+        {
+            bool isFk = IsForeignKeyViolation(ex);
+            if (isFk)
+            {
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "No se puede eliminar",
+                    "Este producto tiene ventas, movimientos de inventario u otros registros asociados. " +
+                    "Para quitarlo del catálogo podés desactivarlo con el botón 'Desactivar'.",
+                    NotificationTypeForJs.Warning);
+            }
+            else
+            {
+                Failure failure = new()
+                {
+                    Active                   = true,
+                    DateTimeCreation         = DateTime.Now,
+                    DateTimeLastModification = DateTime.Now,
+                    UserCreationId           = 1,
+                    UserLastModificationId   = 1,
+                    EmergencyLevel           = 1,
+                    Comment                  = "",
+                    Message                  = ex.Message,
+                    Source                   = ex.Source ?? "",
+                    StackTrace               = ex.StackTrace ?? ""
+                };
+                await failureRepository.AddAsync(failure);
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Error", "Hubo un error al eliminar el producto.", NotificationTypeForJs.Error);
+            }
+        }
+    }
+
+    private static bool IsForeignKeyViolation(Exception ex)
+    {
+        string msg = ex.Message + (ex.InnerException?.Message ?? "");
+        return msg.Contains("REFERENCE constraint", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("FOREIGN KEY",          StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("FK_",                  StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ResetStockFields()
+    {
+        _form.Stock    = 20;
+        _form.MinStock = 5;
+        _form.MaxStock = 100;
+    }
+
+    // ── Cambiar precios masivo ─────────────────────────────────────────────
+    private bool    _showPriceModal    = false;
+    private bool    _pricePreviewReady = false;
+    private bool    _priceComputing    = false;
+    private bool    _priceSaving       = false;
+    private long    _priceCategoryId   = 0;
+    private decimal _pricePercent      = 0m;
+    private string  _priceRounding     = "none";
+    private string  _priceModalError   = "";
+    private List<PricePreviewRow> _pricePreview = new();
+    private record PricePreviewRow(long ProductId, string Name, decimal CurrentPrice, decimal NewPrice);
+
+    private void OpenPriceChangeModal()
+    {
+        _priceCategoryId   = 0;
+        _pricePercent      = 0m;
+        _priceRounding     = "none";
+        _pricePreviewReady = false;
+        _priceModalError   = "";
+        _pricePreview      = new();
+        _showPriceModal    = true;
+    }
+
+    private void ClosePriceModal() => _showPriceModal = false;
+
+    private async Task ComputePricePreview()
+    {
+        if (_pricePercent == 0)
+        {
+            _priceModalError = "El porcentaje no puede ser 0.";
+            return;
+        }
+        _priceModalError = "";
+        _priceComputing  = true;
+        try
+        {
+            var all = await productRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            var filtered = _priceCategoryId == 0
+                ? all
+                : all.Where(p => p.CategoryId == _priceCategoryId).ToList();
+
+            _pricePreview = filtered
+                .Select(p =>
+                {
+                    decimal newPrice = Math.Max(0.01m, p.SalePrice * (1m + _pricePercent / 100m));
+                    newPrice = ApplyPriceRounding(newPrice);
+                    return new PricePreviewRow(p.ProductId, p.Name, p.SalePrice, newPrice);
+                })
+                .ToList();
+
+            _pricePreviewReady = true;
+        }
+        finally
+        {
+            _priceComputing = false;
+        }
+    }
+
+    private decimal ApplyPriceRounding(decimal price) => _priceRounding switch
+    {
+        ".00" => Math.Round(price, 0, MidpointRounding.AwayFromZero),
+        ".99" => Math.Floor(price) + 0.99m,
+        ".50" => Math.Round(price * 2m, 0, MidpointRounding.AwayFromZero) / 2m,
+        _     => Math.Round(price, 2)
+    };
+
+    private static string GetRoundingLabel(string r) => r switch
+    {
+        ".00" => "al entero",
+        ".99" => "al .99",
+        ".50" => "al .50",
+        _     => "sin redondeo"
+    };
+
+    private async Task ApplyPriceChanges()
+    {
+        _priceSaving = true;
+        try
+        {
+            var all    = await productRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            var lookup = all.ToDictionary(p => p.ProductId);
+            foreach (var row in _pricePreview)
+            {
+                if (!lookup.TryGetValue(row.ProductId, out var product)) continue;
+                product.SalePrice = row.NewPrice;
+                product.UpdatedAt = DateTime.Now;
+                await productRepository.UpdateAsync(product);
+            }
+            _showPriceModal = false;
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", $"{_pricePreview.Count} precios actualizados correctamente.", "success");
+            await LoadProductos();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Error", ex.Message, NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _priceSaving = false;
+        }
+    }
+
+    private class ProductFormVM
+    {
+        public long    CategoryId      { get; set; }
+        public long    UnitId          { get; set; }
+        public string  Barcode         { get; set; } = "";
+        public string  Name            { get; set; } = "";
+        public string  Description     { get; set; } = "";
+        public decimal SalePrice       { get; set; }
+        public decimal CostPrice       { get; set; }
+        public decimal WholesalePrice  { get; set; }
+        public decimal Stock           { get; set; } = 20;
+        public decimal MinStock        { get; set; } = 5;
+        public decimal MaxStock        { get; set; } = 100;
+        public decimal TaxRate         { get; set; }
+        public bool    AllowFractional { get; set; }
+        public bool    Active          { get; set; } = true;
+        public bool    IsAvailableToSellOnline { get; set; }
+    }
+}

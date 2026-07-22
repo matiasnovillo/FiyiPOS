@@ -1,0 +1,100 @@
+@page "/pagar"
+
+@using FiyiPOS.Components.Shared.ComponentsForHome
+
+<PageTitle>Renovar suscripción | FiyiPOS</PageTitle>
+
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<div class="container position-sticky z-index-sticky top-0">
+    <div class="row">
+        <div class="col-12">
+            <_NavBar></_NavBar>
+        </div>
+    </div>
+</div>
+
+<div class="page-header min-vh-100 lp-page-bg">
+    <div class="container mb-4">
+        <div class="row mt-n4 justify-content-center">
+            <div class="col-xl-5 col-lg-6 col-md-8 mx-auto">
+
+                <div class="card mt-8">
+                    <div class="card-header p-0 position-relative mt-n4 mx-3 z-index-2">
+                        <div class="bg-gradient-primary shadow-primary border-radius-lg py-3 pe-1 text-center py-4">
+                            <h4 class="font-weight-bolder text-white mt-1">
+                                <i class="fas fa-money-bill-wave me-2"></i>Renovar suscripción
+                            </h4>
+                            <p class="mb-1 text-sm text-white">
+                                FiyiPOS — Sistema de Punto de Venta
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="card-body px-4 py-4">
+
+                        <!-- Precio -->
+                        <div class="pagar-price-box">
+                            <div class="pagar-price-label">Costo mensual</div>
+                            <div class="pagar-price-amount">$26.000</div>
+                            <div class="pagar-price-currency">pesos argentinos (ARS)</div>
+                        </div>
+
+                        <hr class="pagar-divider" />
+
+                        <!-- Datos de transferencia -->
+                        <p class="pagar-section-title">
+                            <i class="fas fa-university me-2"></i>Datos para transferencia
+                        </p>
+
+                        <div class="pagar-data-grid">
+                            <div class="pagar-data-row">
+                                <span class="pagar-data-label">Titular</span>
+                                <span class="pagar-data-value">Matias Alejandro Novillo</span>
+                            </div>
+                            <div class="pagar-data-row">
+                                <span class="pagar-data-label">Alias</span>
+                                <span class="pagar-data-value pagar-highlight">matinovillo.mp</span>
+                            </div>
+                            <div class="pagar-data-row">
+                                <span class="pagar-data-label">Banco</span>
+                                <span class="pagar-data-value">Mercado Pago</span>
+                            </div>
+                        </div>
+
+                        <hr class="pagar-divider" />
+
+                        <!-- Enviar comprobante -->
+                        <p class="pagar-section-title">
+                            <i class="fab fa-whatsapp me-2" style="color:#25d366;"></i>Enviá el comprobante
+                        </p>
+                        <p class="pagar-hint">
+                            Una vez realizada la transferencia, enviá el comprobante por WhatsApp para activar tu renovación.
+                        </p>
+
+                        <div class="text-center mt-3">
+                            <a href="https://wa.me/543512329541?text=Hola%2C%20te%20env%C3%ADo%20el%20comprobante%20de%20pago%20de%20FiyiPOS."
+                               target="_blank"
+                               class="btn bg-gradient-success w-100 pagar-wsp-btn">
+                                <i class="fab fa-whatsapp me-2"></i>
+                                Enviar comprobante por WhatsApp
+                            </a>
+                        </div>
+
+                        <div class="text-center mt-3">
+                            <NavLink href="/entrar" class="text-primary text-gradient font-weight-bold text-sm">
+                                <i class="fas fa-arrow-left me-1"></i> Volver al inicio
+                            </NavLink>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<_Footer></_Footer>

@@ -1,0 +1,391 @@
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Repositories
+@using System.Text
+@using System.Text.Json
+@using System.Net.Http
+
+@inject PosSessionService posSessionService
+@inject StoreRepository storeRepository
+@inject IHttpClientFactory httpFactory
+@inject IJSRuntime JS
+
+<div class="ai-root">
+
+    <!-- ── Top tab pills ── -->
+    <div class="ai-top-bar">
+        <div class="ai-top-tabs">
+            @foreach (var t in _topTabs)
+            {
+                <button class="ai-top-tab @(_activeTab == t.Key ? "active" : "")"
+                        @onclick="() => SendQuickMessageAsync(t.Prompt, t.Key)"
+                        disabled="@(!_apiKeyOk || _isThinking)">
+                    <i class="fas @t.Icon"></i>
+                    <span>@t.Label</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="ai-body">
+
+        <!-- ══════════ CHAT PANEL ══════════ -->
+        <div class="ai-chat-panel">
+
+            <!-- Header -->
+            <div class="ai-chat-header">
+                <div class="ai-chat-hl">
+                    <div class="ai-avatar-wrap">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div>
+                        <div class="ai-title">FiyiPOS AI</div>
+                        <div class="ai-status-line">
+                            <span class="ai-dot @(_apiKeyOk ? "ai-dot-green" : "ai-dot-red")"></span>
+                            <span class="fs-6">@(_apiKeyOk ? "Online · Listo para ayudarte" : "Sin API Key · Ver configuración")</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ai-chat-hr">
+                    <button class="ai-icon-btn" title="Nueva conversación" @onclick="StartNewConversation">
+                        <i class="fas fa-plus-circle"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="ai-messages" @ref="_msgContainer">
+
+                @if (!_messages.Any())
+                {
+                    <div class="ai-welcome-msg">
+                        <div class="ai-msg-avatar"><i class="fas fa-robot"></i></div>
+                        <div class="ai-bubble ai-bubble-bot">
+                            <p>¡Hola, <strong>@posSessionService.OperatorName</strong>! Soy el asistente de FiyiPOS. ✨</p>
+                            <p>Tengo contexto de tu tienda <strong>@posSessionService.StoreName</strong>. Puedo ayudarte a entender tus ventas, revisar stock, analizar devoluciones o cualquier consulta del sistema POS.</p>
+                            <p>¿En qué te puedo ayudar hoy?</p>
+                            @if (_apiKeyOk)
+                            {
+                                <div class="ai-welcome-chips">
+                                    <button class="ai-welcome-chip" @onclick='() => SendQuickMessageAsync("¿Cuáles son las ventas de hoy?", "ventas")'>
+                                        <i class="fas fa-chart-line me-1"></i>Ventas de hoy
+                                    </button>
+                                    <button class="ai-welcome-chip" @onclick='() => SendQuickMessageAsync("¿Qué productos tienen stock bajo?", "stock")'>
+                                        <i class="fas fa-boxes me-1"></i>Stock bajo
+                                    </button>
+                                    <button class="ai-welcome-chip" @onclick='() => SendQuickMessageAsync("¿Cómo puedo reducir mis costos?", "")'>
+                                        <i class="fas fa-piggy-bank me-1"></i>Reducir costos
+                                    </button>
+                                    <button class="ai-welcome-chip" @onclick='() => SendQuickMessageAsync("Explicame el módulo de devoluciones", "")'>
+                                        <i class="fas fa-undo-alt me-1"></i>Devoluciones
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="ai-key-warning">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    No hay API Key configurada para esta sucursal. Un administrador debe ingresarla en <strong>Administrador → Sucursales → Editar</strong>, campo <strong>Claude API Key</strong>.
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var msg in _messages)
+                    {
+                        @if (msg.Role == "user")
+                        {
+                            <div class="ai-msg ai-msg-user">
+                                <div class="ai-bubble ai-bubble-user">@msg.Content</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="ai-msg ai-msg-bot">
+                                <div class="ai-msg-avatar"><i class="fas fa-robot"></i></div>
+                                <div class="ai-bubble ai-bubble-bot">@((MarkupString)FormatResponse(msg.Content))</div>
+                            </div>
+                        }
+                    }
+
+                    @if (_isThinking)
+                    {
+                        <div class="ai-msg ai-msg-bot">
+                            <div class="ai-msg-avatar"><i class="fas fa-robot"></i></div>
+                            <div class="ai-bubble ai-bubble-bot">
+                                <span class="ai-thinking"><span></span><span></span><span></span></span>
+                            </div>
+                        </div>
+                    }
+                }
+
+            </div>
+
+            <!-- Quick input chips -->
+            <div class="ai-chips-bar">
+                @foreach (var c in _inputChips)
+                {
+                    <button class="ai-chip" @onclick='() => SendQuickMessageAsync(c.Prompt, "")' disabled="@(!_apiKeyOk || _isThinking)">
+                        @c.Label
+                    </button>
+                }
+            </div>
+
+            <!-- Input -->
+            <div class="ai-input-bar">
+                <input class="ai-input" type="text"
+                       placeholder="Preguntá algo sobre tus ventas o el sistema..."
+                       @bind="_inputText"
+                       @bind:event="oninput"
+                       @onkeydown="OnInputKeyDown"
+                       disabled="@(!_apiKeyOk || _isThinking)" />
+                <button class="ai-send-btn @(_isThinking ? "ai-send-busy" : "")"
+                        @onclick="SendCurrentMessageAsync"
+                        disabled="@(string.IsNullOrWhiteSpace(_inputText) || _isThinking || !_apiKeyOk)">
+                    <i class="fas @(_isThinking ? "fa-spinner fa-spin" : "fa-paper-plane")"></i>
+                </button>
+            </div>
+
+        </div>
+
+        <!-- ══════════ SIDEBAR ══════════ -->
+        <div class="ai-sidebar">
+
+            <!-- Quick Actions -->
+            <div class="ai-sidebar-section">
+                <div class="ai-sidebar-heading">ACCIONES RÁPIDAS</div>
+                @foreach (var a in _quickActions)
+                {
+                    <button class="ai-action-btn" @onclick='() => SendQuickMessageAsync(a.Prompt, "")' disabled="@(!_apiKeyOk || _isThinking)">
+                        <i class="fas @a.Icon ai-action-icon"></i>
+                        <span>@a.Label</span>
+                        <i class="fas fa-chevron-right ms-auto" style="font-size:.75rem;opacity:.4;"></i>
+                    </button>
+                }
+            </div>
+
+            <!-- Context -->
+            <div class="ai-sidebar-section">
+                <div class="ai-sidebar-heading">TU CONTEXTO</div>
+                <div class="ai-ctx-row">
+                    <span class="ai-ctx-label">Tienda</span>
+                    <span class="ai-ctx-value">@posSessionService.StoreName</span>
+                </div>
+                <div class="ai-ctx-row">
+                    <span class="ai-ctx-label">Operador</span>
+                    <span class="ai-ctx-value">@posSessionService.OperatorName</span>
+                </div>
+                <div class="ai-ctx-row">
+                    <span class="ai-ctx-label">Fecha</span>
+                    <span class="ai-ctx-value">@DateTime.Today.ToString("dd/MM/yyyy")</span>
+                </div>
+                <div class="ai-ctx-row">
+                    <span class="ai-ctx-label">API</span>
+                    <span class="ai-ctx-value @(_apiKeyOk ? "ai-ctx-ok" : "ai-ctx-err")">
+                        <i class="fas @(_apiKeyOk ? "fa-check-circle" : "fa-times-circle") me-1"></i>@(_apiKeyOk ? "Conectado" : "Sin configurar")
+                    </span>
+                </div>
+                @if (_messages.Any())
+                {
+                    <div class="ai-ctx-row">
+                        <span class="ai-ctx-label">Mensajes</span>
+                        <span class="ai-ctx-value">@_messages.Count</span>
+                    </div>
+                }
+            </div>
+
+            <!-- Support -->
+            <div class="ai-support-box">
+                <div class="ai-support-title">¿Necesitas ayuda humana?</div>
+                <div class="ai-support-text">Si el AI no puede resolver tu consulta, contactá al soporte técnico de FiyiPOS.</div>
+                <a class="ai-support-btn" href="mailto:soporte@fiyipos.com">
+                    <i class="fas fa-headset me-2"></i>Contactar soporte
+                </a>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+@code {
+
+    // ── Types ──────────────────────────────────────────
+    private record ChatMessage(string Role, string Content);
+    private record TabItem(string Key, string Label, string Icon, string Prompt);
+    private record ChipItem(string Label, string Prompt);
+    private record ActionItem(string Label, string Icon, string Prompt);
+
+    // ── State ──────────────────────────────────────────
+    private readonly List<ChatMessage> _messages = new();
+    private string  _inputText  = "";
+    private bool    _isThinking = false;
+    private bool    _apiKeyOk   = false;
+    private string? _apiKey;
+    private string  _activeTab  = "";
+    private ElementReference _msgContainer;
+
+    // ── Quick content ──────────────────────────────────
+    private static readonly TabItem[] _topTabs =
+    [
+        new("ventas",   "Análisis de ventas", "fa-chart-line", "Ayudame a analizar mis ventas. ¿Qué métricas debería revisar diariamente?"),
+        new("stock",    "Stock",              "fa-boxes",      "¿Qué productos típicamente tienen mayor rotación y cuáles suelen quedarse sin stock?"),
+        new("clientes", "Clientes",           "fa-users",      "¿Cómo puedo mejorar la fidelización de mis clientes en un sistema POS?"),
+        new("reportes", "Reportes",           "fa-chart-bar",  "Explicame qué reportes son más útiles para gestionar una tienda con FiyiPOS"),
+    ];
+
+    private static readonly ChipItem[] _inputChips =
+    [
+        new("Mis ventas hoy",     "¿Qué información debería revisar sobre mis ventas de hoy?"),
+        new("Renovar contrato",   "¿Cómo funciona la renovación de suscripción en FiyiPOS?"),
+        new("Comparar períodos",  "¿Cómo comparo ventas entre dos períodos en el sistema?"),
+        new("Tarifas mercado",    "¿Cómo debo calcular mis precios para ser competitivo?"),
+        new("Detalles de plan",   "¿Qué módulos incluye mi plan actual de FiyiPOS?"),
+    ];
+
+    private static readonly ActionItem[] _quickActions =
+    [
+        new("Ver mis ventas",          "fa-shopping-cart", "Dame consejos sobre cómo revisar e interpretar mis ventas diarias en FiyiPOS"),
+        new("Explicar recomendación",  "fa-lightbulb",     "¿Qué me recomendás mejorar en la gestión de mi tienda?"),
+        new("Estado de devoluciones",  "fa-undo-alt",      "Explicame cómo funciona el módulo de devoluciones en FiyiPOS y cuándo usarlo"),
+    ];
+
+    // ── Lifecycle ──────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        var store = await storeRepository.GetOneByStoreIdAsync(posSessionService.StoreId);
+        _apiKey   = store?.ClaudeApiKey;
+        _apiKeyOk = !string.IsNullOrWhiteSpace(_apiKey) && _apiKey!.StartsWith("sk-ant-");
+    }
+
+    // ── Send ───────────────────────────────────────────
+    private async Task SendCurrentMessageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_inputText) || _isThinking || !_apiKeyOk) return;
+        var text = _inputText.Trim();
+        _inputText = "";
+        await SendMessageAsync(text);
+    }
+
+    private async Task SendQuickMessageAsync(string prompt, string tabKey)
+    {
+        if (_isThinking || !_apiKeyOk) return;
+        _activeTab = tabKey;
+        await SendMessageAsync(prompt);
+    }
+
+    private async Task OnInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) await SendCurrentMessageAsync();
+    }
+
+    private async Task SendMessageAsync(string userText)
+    {
+        _messages.Add(new ChatMessage("user", userText));
+        _isThinking = true;
+        StateHasChanged();
+        await ScrollAsync();
+
+        try
+        {
+            var http = httpFactory.CreateClient();
+
+            var reqBody = new
+            {
+                model      = "claude-haiku-4-5-20251001",
+                max_tokens = 1024,
+                system     = BuildSystemPrompt(),
+                messages   = _messages
+                    .Select(m => new { role = m.Role, content = m.Content })
+                    .ToArray()
+            };
+
+            var req = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
+            req.Headers.Add("x-api-key", _apiKey);
+            req.Headers.Add("anthropic-version", "2023-06-01");
+            req.Content = new StringContent(
+                JsonSerializer.Serialize(reqBody),
+                Encoding.UTF8, "application/json");
+
+            var resp = await http.SendAsync(req);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                string errMsg = resp.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.Unauthorized    => "API Key inválida. Verificá la configuración en appsettings.json.",
+                    System.Net.HttpStatusCode.TooManyRequests => "Límite de solicitudes alcanzado. Esperá unos segundos.",
+                    _ => $"Error {(int)resp.StatusCode}: {resp.ReasonPhrase}"
+                };
+                _messages.Add(new ChatMessage("assistant", $"⚠️ {errMsg}"));
+                return;
+            }
+
+            using var doc = await JsonDocument.ParseAsync(
+                await resp.Content.ReadAsStreamAsync());
+            string content = doc.RootElement
+                .GetProperty("content")[0]
+                .GetProperty("text")
+                .GetString() ?? "(sin respuesta)";
+
+            _messages.Add(new ChatMessage("assistant", content));
+        }
+        catch (Exception ex)
+        {
+            _messages.Add(new ChatMessage("assistant", $"⚠️ Error de conexión: {ex.Message}"));
+        }
+        finally
+        {
+            _isThinking = false;
+            StateHasChanged();
+            await ScrollAsync();
+        }
+    }
+
+    private void StartNewConversation()
+    {
+        _messages.Clear();
+        _inputText  = "";
+        _activeTab  = "";
+        _isThinking = false;
+    }
+
+    // ── Helpers ────────────────────────────────────────
+    private string BuildSystemPrompt() => $"""
+        Sos el asistente inteligente integrado en FiyiPOS, un sistema web de Punto de Venta (POS).
+
+        CONTEXTO ACTUAL:
+        - Tienda: {posSessionService.StoreName}
+        - Operador: {posSessionService.OperatorName}
+        - Fecha: {DateTime.Today:dd/MM/yyyy}
+        - Rol del usuario: {posSessionService.Role}
+
+        MÓDULOS DEL SISTEMA:
+        Ventas, Créditos, Clientes, Productos, Inventario, Devoluciones,
+        Facturas, Compras, Corte de caja, Reportes, Dashboard, Configuración.
+
+        INSTRUCCIONES:
+        - Respondé en español argentino, de forma clara y concisa.
+        - Si preguntan datos en tiempo real (ventas exactas, stock, etc.), explicá que no tenés
+          acceso directo a la BD pero guiá al módulo correcto.
+        - Ayudá con el uso del sistema, estrategias de negocio y consultas comerciales.
+        - Usá listas y negritas cuando ayude a la claridad.
+        - Sé amigable y profesional.
+        """;
+
+    private static string FormatResponse(string text)
+    {
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\*\*(.*?)\*\*", "<strong>$1</strong>");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\*(.*?)\*", "<em>$1</em>");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"^- (.+)$", "<li>$1</li>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        text = text.Replace("\n", "<br/>");
+        return text;
+    }
+
+    private async Task ScrollAsync()
+    {
+        try { await JS.InvokeVoidAsync("aichatHelper.scrollToBottom", _msgContainer); }
+        catch { }
+    }
+}

@@ -1,0 +1,900 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PurchaseBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PurchaseBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PurchaseBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.PurchaseDetailBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.SupplierBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.SupplierBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+@using System.Text.RegularExpressions
+
+@inject PurchaseRepository  purchaseRepository
+@inject SupplierRepository  supplierRepository
+@inject ProductRepository   productRepository
+@inject PosSessionService   posSessionService
+@inject IJSRuntime          JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">MÓDULO DE COMPRAS</div>
+    <div class="header-sub">Registra órdenes de compra a proveedores. Al confirmar la recepción, el stock se actualiza automáticamente.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de compras</div>
+        <div class="stat-value">@_purchases.Count</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Compras confirmadas</div>
+        <div class="stat-value">@_statConfirmed</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Compras pendientes</div>
+        <div class="stat-value">@_statPending</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por proveedor o Nº de factura..."
+               @bind="_searchText" @oninput="OnSearchInput" />
+    </div>
+    <button class="abtn abtn-blue" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nueva Compra
+    </button>
+</div>
+
+<!-- ── FILTROS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(_typeFilter == "" ? "active" : "")"
+            @onclick='() => SetTypeFilter("")'>
+        Todas
+    </button>
+    <button class="filter-chip @(_typeFilter == "confirmadas" ? "active" : "")"
+            @onclick='() => SetTypeFilter("confirmadas")'>
+        <i class="fas fa-check"></i> Confirmadas
+    </button>
+    <button class="filter-chip @(_typeFilter == "pendientes" ? "active" : "")"
+            @onclick='() => SetTypeFilter("pendientes")'>
+        <i class="fas fa-clock"></i> Pendientes
+    </button>
+
+    <span class="inv-date-separator"></span>
+
+    <label class="inv-date-label fs-6 mt-2"><i class="fas fa-calendar-day me-1"></i>Desde</label>
+    <input type="date" class="inv-date-input fs-6" @bind="_dateFrom" @bind:after="OnDateFilterChanged" />
+
+    <label class="inv-date-label fs-6 mt-2">Hasta</label>
+    <input type="date" class="inv-date-input fs-6" @bind="_dateTo" @bind:after="OnDateFilterChanged" />
+
+    @if (_dateFrom.HasValue || _dateTo.HasValue)
+    {
+        <button class="filter-chip" @onclick="ClearDateFilter">
+            <i class="fas fa-times"></i> Limpiar fechas
+        </button>
+    }
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando compras...</p>
+        </div>
+    }
+    else if (!_pagePurchases.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-truck"></i>
+            <p>No hay compras registradas</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Fecha</th>
+                    <th>Proveedor</th>
+                    <th>Nº de factura</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _pagePurchases)
+                {
+                    <tr>
+                        <td class="fs-6">#@p.PurchaseId</td>
+                        <td class="fs-6">@p.PurchaseDate.ToString("dd/MM/yyyy")</td>
+                        <td class="fs-6 fw-semibold">@p.SupplierName</td>
+                        <td class="fs-6">
+                            @(string.IsNullOrWhiteSpace(p.SupplierInvoice) ? "—" : p.SupplierInvoice)
+                        </td>
+                        <td class="fs-6 fw-semibold">$@p.Total.ToString("N2")</td>
+                        <td>
+                            <span class="compras-status-badge fs-6 @(p.IsConfirmed ? "badge-confirmed" : "badge-pending")">
+                                @(p.IsConfirmed ? "Confirmada" : "Pendiente")
+                            </span>
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenViewModal(p)">
+                                <i class="fas fa-eye"></i> Ver
+                            </button>
+                            @if (!p.IsConfirmed)
+                            {
+                                <button class="abtn abtn-success" @onclick="() => OpenConfirmModal(p)">
+                                    <i class="fas fa-check-double"></i> Confirmar
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_purchases.Count > 0)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+        @for (int i = winStart; i <= winEnd; i++)
+        {
+            int pg = i;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: Nueva Compra
+     ═══════════════════════════════════════════════════════ -->
+@if (_showNewModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:800px;">
+
+            <div class="panel-header">
+                <span><i class="fas fa-plus-circle me-2"></i>Nueva compra</span>
+                <button class="panel-close fs-3" @onclick="CloseNewModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-section">Datos generales</div>
+
+                <div class="panel-grid">
+                    <div class="field">
+                        <label>Proveedor <span class="required-star">*</span></label>
+                        <select @bind="_newSupplierId"
+                                class="@(_showValidation && _newSupplierId == 0 ? "input-invalid" : "")">
+                            <option value="0">— Seleccionar —</option>
+                            @foreach (var s in _suppliers)
+                            {
+                                <option value="@s.SupplierId">@s.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Nº de factura del proveedor</label>
+                        <input type="text" @bind="_newSupplierInvoice" placeholder="Ej: FAC-001234" />
+                    </div>
+                    <div class="field">
+                        <label>Fecha de compra <span class="required-star">*</span></label>
+                        <input type="date" @bind="_newPurchaseDate" />
+                    </div>
+                    <div class="field field-full">
+                        <label>Notas / Condiciones</label>
+                        <textarea @bind="_newNotes" rows="2"></textarea>
+                    </div>
+                </div>
+
+                <div class="panel-section">Productos</div>
+
+                <div class="compras-product-search-wrap">
+                    <div class="compras-product-search">
+                        <i class="fas fa-search"></i>
+                        <input type="text"
+                               placeholder="Buscar por nombre o código de barras..."
+                               value="@_productSearch"
+                               @oninput="HandleProductSearch"
+                               @onfocus="() => _showProductResults = true" />
+                    </div>
+                    @if (_showProductResults && _productResults.Any())
+                    {
+                        <div class="compras-product-dropdown">
+                            @foreach (var pr in _productResults.Take(8))
+                            {
+                                <div class="compras-product-option" @onclick="() => AddProductLine(pr)">
+                                    <span class="cpd-name">@pr.Name</span>
+                                    <span class="cpd-meta">@pr.Barcode · Stock: @pr.Stock.ToString("N0")</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (_newLines.Any())
+                {
+                    <div class="compras-lines-table">
+                        <div class="compras-lines-head">
+                            <span class="fs-6">Producto</span>
+                            <span class="fs-6">Cantidad</span>
+                            <span class="fs-6">Costo unit.</span>
+                            <span class="fs-6">Subtotal</span>
+                            <span></span>
+                        </div>
+                        @foreach (var line in _newLines)
+                        {
+                            <div class="compras-line-row">
+                                <div class="compras-line-name">
+                                    <span>@line.ProductName</span>
+                                    @if (!string.IsNullOrWhiteSpace(line.Barcode))
+                                    {
+                                        <span class="compras-line-barcode">@line.Barcode</span>
+                                    }
+                                </div>
+                                <input type="number" min="0.01" step="0.01"
+                                       class="compras-line-input"
+                                       @bind="line.Quantity"
+                                       @bind:event="oninput"
+                                       @bind:after="RecalcTotals" />
+                                <input type="number" min="0" step="0.01"
+                                       class="compras-line-input"
+                                       @bind="line.UnitCost"
+                                       @bind:event="oninput"
+                                       @bind:after="RecalcTotals" />
+                                <span class="compras-line-subtotal">
+                                    $@((line.Quantity * line.UnitCost).ToString("N2"))
+                                </span>
+                                <button class="compras-line-remove" @onclick="() => RemoveLine(line)">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="compras-lines-empty">
+                        <i class="fas fa-box-open fa-xl"></i>
+                        <span class="fs-6">Agrega productos usando el buscador</span>
+                    </div>
+                }
+
+                <div class="compras-totals">
+                    <div class="compras-total-row">
+                        <span class="fs-6">Subtotal</span>
+                        <span class="fs-6">$@_newSubtotal.ToString("N2")</span>
+                    </div>
+                    <div class="compras-total-row">
+                        <span class="fs-6">IVA</span>
+                        <div class="compras-tax-input-wrap">
+                            <span class="fs-6">$</span>
+                            <input type="number" min="0" step="0.01"
+                                   class="fs-6"
+                                   @bind="_newTaxAmount"
+                                   @bind:event="oninput"
+                                   @bind:after="RecalcTotals" />
+                        </div>
+                    </div>
+                    <div class="compras-total-row compras-total-final">
+                        <span>Total</span>
+                        <span>$@((_newSubtotal + _newTaxAmount).ToString("N2"))</span>
+                    </div>
+                </div>
+
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseNewModal" disabled="@_saving">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="SavePurchaseAsync"
+                        disabled="@(_saving || !_newLines.Any())">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-save")"></i>
+                    @(_saving ? "Guardando..." : "Guardar como pendiente")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: Ver Compra
+     ═══════════════════════════════════════════════════════ -->
+@if (_showViewModal && _selectedPurchase != null)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:700px;">
+
+            <div class="panel-header">
+                <span>
+                    Compra #@_selectedPurchase.PurchaseId
+                    <span class="compras-status-badge fs-6 @(_selectedPurchase.IsConfirmed ? "badge-confirmed" : "badge-pending") ms-2">
+                        @(_selectedPurchase.IsConfirmed ? "Confirmada ✓" : "Pendiente")
+                    </span>
+                </span>
+                <button class="panel-close fs-3" @onclick="() => _showViewModal = false">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="compras-view-meta">
+                    <div><span class="fs-6">Proveedor</span><strong class="fs-6">@_selectedPurchase.SupplierName</strong></div>
+                    <div><span class="fs-6">Fecha</span><strong class="fs-6">@_selectedPurchase.PurchaseDate.ToString("dd/MM/yyyy")</strong></div>
+                    @if (!string.IsNullOrWhiteSpace(_selectedPurchase.SupplierInvoice))
+                    {
+                        <div><span class="fs-6">Factura proveedor</span><strong class="fs-6">@_selectedPurchase.SupplierInvoice</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_selectedPurchase.Notes))
+                    {
+                        <div class="compras-view-notes"><span class="fs-6">Notas</span><span class="fs-6">@_selectedPurchase.Notes</span></div>
+                    }
+                </div>
+
+                <div class="panel-section fs-6">Productos recibidos</div>
+
+                @if (_loadingDetails)
+                {
+                    <div class="empty-state fs-6"><i class="fas fa-spinner fa-spin fa-xl"></i></div>
+                }
+                else if (_selectedDetails.Any())
+                {
+                    <div class="compras-lines-table">
+                        <div class="compras-lines-head">
+                            <span class="fs-6">Producto</span>
+                            <span class="fs-6">Cantidad</span>
+                            <span class="fs-6">Costo unit.</span>
+                            <span class="fs-6">Subtotal</span>
+                            <span class="fs-6"></span>
+                        </div>
+                        @foreach (var d in _selectedDetails)
+                        {
+                            <div class="compras-line-row compras-line-readonly">
+                                <div class="compras-line-name">
+                                    <span class="fs-6">@d.ProductName</span>
+                                    @if (!string.IsNullOrWhiteSpace(d.Barcode))
+                                    {
+                                        <span class="compras-line-barcode fs-6">@d.Barcode</span>
+                                    }
+                                </div>
+                                <span class="compras-line-val fs-6">@d.Quantity.ToString("N2")</span>
+                                <span class="compras-line-val fs-6">$@d.UnitCost.ToString("N2")</span>
+                                <span class="compras-line-subtotal fs-6">$@d.Subtotal.ToString("N2")</span>
+                                <span></span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="compras-totals">
+                    <div class="compras-total-row">
+                        <span class="fs-6">Subtotal</span><span class="fs-6">$@_selectedPurchase.Subtotal.ToString("N2")</span>
+                    </div>
+                    <div class="compras-total-row">
+                        <span class="fs-6">IVA</span><span class="fs-6">$@_selectedPurchase.TaxAmount.ToString("N2")</span>
+                    </div>
+                    <div class="compras-total-row compras-total-final">
+                        <span class="fs-6">Total</span><span class="fs-6">$@_selectedPurchase.Total.ToString("N2")</span>
+                    </div>
+                </div>
+
+                @if (!_selectedPurchase.IsConfirmed)
+                {
+                    <div class="compras-confirm-banner fs-6">
+                        <i class="fas fa-info-circle"></i>
+                        Esta compra aún no ha sido confirmada. Al confirmarla, el stock de cada producto
+                        se incrementará y se registrará un movimiento de inventario por línea.
+                    </div>
+                }
+                else
+                {
+                    <div class="compras-confirmed-banner fs-6">
+                        <i class="fas fa-check-circle"></i>
+                        Mercancía recibida y stock actualizado. Los movimientos de inventario
+                        quedaron registrados en el módulo de Inventario.
+                    </div>
+                }
+
+            </div>
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showViewModal = false">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+                @if (!_selectedPurchase.IsConfirmed)
+                {
+                    <button class="abtn abtn-success" @onclick="OpenConfirmFromView">
+                        <i class="fas fa-check-double"></i> Confirmar recepción
+                    </button>
+                }
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: Confirmar recepción
+     ═══════════════════════════════════════════════════════ -->
+@if (_showConfirmModal && _selectedPurchase != null)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:460px;">
+            <div class="panel-header">
+                <span><i class="fas fa-check-double me-2"></i>Confirmar recepción</span>
+                <button class="panel-close fs-3" @onclick="CloseConfirmModal">×</button>
+            </div>
+            <div class="panel-body">
+                <p style="text-align:center;">¿Confirmar la recepción de la <strong>Compra #@_selectedPurchase.PurchaseId</strong>?</p>
+                <p class="fs-6" style="margin-top:.4rem;text-align:center;">
+                    El stock de cada producto se incrementará y se registrará un movimiento de inventario por línea.
+                </p>
+
+                <div class="field field-full" style="margin-top:1.25rem;">
+                    <label class="fs-6">¿Cómo se paga esta compra? <span class="required-star">*</span></label>
+                    <select @bind="_paymentMethod" class="fs-6">
+                        <option value="CASH">Efectivo (se descuenta de la gaveta)</option>
+                        <option value="TRANSFER">Transferencia / cheque</option>
+                        <option value="CREDIT">A crédito / pago pendiente</option>
+                    </select>
+                </div>
+
+                @if (_paymentMethod == "CASH")
+                {
+                    <p class="fs-6" style="color:var(--pos-warning,#d97706);margin-top:.5rem;">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        Se registrará una salida de <strong>$@_selectedPurchase.Total.ToString("N2")</strong> en movimientos de caja.
+                    </p>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(_confirmError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_confirmError
+                </div>
+            }
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseConfirmModal"
+                        disabled="@_confirming">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmPurchaseAsync"
+                        disabled="@_confirming">
+                    <i class="fas @(_confirming ? "fa-spinner fa-spin" : "fa-check-double")"></i>
+                    @(_confirming ? "Confirmando..." : "Sí, confirmar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    // ── List state ─────────────────────────────────────────
+    private bool      _loading    = true;
+    private string    _searchText = "";
+    private string    _typeFilter = "";
+    private DateTime? _dateFrom   = null;
+    private DateTime? _dateTo     = null;
+
+    private List<PurchaseLineDTO> _purchases     = new();
+    private List<PurchaseLineDTO> _pagePurchases = new();
+    private int _pageIndex  = 1;
+    private const int _pageSize = 10;
+    private int _totalPages = 1;
+
+    // ── Stats ──────────────────────────────────────────────
+    private int     _statPending   = 0;
+    private int     _statConfirmed = 0;
+
+    // ── Modals ─────────────────────────────────────────────
+    private bool             _showNewModal     = false;
+    private bool             _showViewModal    = false;
+    private bool             _showConfirmModal = false;
+    private bool             _loadingDetails   = false;
+    private bool             _saving           = false;
+    private bool             _confirming       = false;
+    private bool             _showValidation   = false;
+    private string           _modalError       = "";
+    private string           _confirmError     = "";
+    private string           _paymentMethod    = "CASH";
+    private PurchaseLineDTO? _selectedPurchase;
+    private List<PurchaseDetailLineDTO> _selectedDetails = new();
+
+    // ── Master data ────────────────────────────────────────
+    private List<Supplier> _suppliers = new();
+    private List<Product>  _products  = new();
+
+    // ── New purchase form ──────────────────────────────────
+    private long          _newSupplierId      = 0;
+    private string        _newSupplierInvoice = "";
+    private DateTime      _newPurchaseDate    = DateTime.Today;
+    private string        _newNotes           = "";
+    private List<NewLine> _newLines           = new();
+    private decimal       _newSubtotal        = 0;
+    private decimal       _newTaxAmount       = 0;
+    private string        _productSearch      = "";
+    private bool          _showProductResults = false;
+    private List<Product> _productResults     = new();
+
+    private CancellationTokenSource cts = new();
+
+    // ── Lifecycle ──────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        var suppliersTask = supplierRepository.GetAllActiveAsync(posSessionService.StoreId);
+        var productsTask  = productRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        await LoadPurchasesAsync();
+        _suppliers = await suppliersTask;
+        _products  = await productsTask;
+    }
+
+    private async Task LoadPurchasesAsync()
+    {
+        _loading   = true;
+        _purchases = await purchaseRepository.GetAllLinesByStoreIdAsync(posSessionService.StoreId);
+
+        _statPending   = _purchases.Count(p => !p.IsConfirmed);
+        _statConfirmed = _purchases.Count(p =>  p.IsConfirmed);
+
+        _pageIndex = 1;
+        ApplyFilter();
+        _loading = false;
+    }
+
+    private void ApplyFilter()
+    {
+        IEnumerable<PurchaseLineDTO> filtered = _purchases;
+
+        if (_typeFilter == "pendientes")  filtered = filtered.Where(p => !p.IsConfirmed);
+        if (_typeFilter == "confirmadas") filtered = filtered.Where(p =>  p.IsConfirmed);
+
+        if (_dateFrom.HasValue)
+            filtered = filtered.Where(p => p.PurchaseDate.Date >= _dateFrom.Value.Date);
+        if (_dateTo.HasValue)
+            filtered = filtered.Where(p => p.PurchaseDate.Date <= _dateTo.Value.Date);
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            string[] Words = Regex
+                    .Replace(_searchText
+                    .Trim(), @"\s+", " ")
+                    .Split(" ");
+
+            filtered = filtered.Where(p =>
+                Words.Any(word => p.SupplierName.Contains(word)) ||
+                Words.Any(word => (p.SupplierInvoice ?? "").Contains(word)));
+        }
+
+        var list    = filtered.ToList();
+        _totalPages = Math.Max(1, (int)Math.Ceiling(list.Count / (double)_pageSize));
+        if (_pageIndex > _totalPages) _pageIndex = _totalPages;
+        _pagePurchases = list.Skip((_pageIndex - 1) * _pageSize).Take(_pageSize).ToList();
+    }
+
+    private async void OnSearchInput(ChangeEventArgs e)
+    {
+        cts.Cancel();
+        cts = new();
+
+        try
+        {
+            await Task.Delay(300, cts.Token);
+
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex = 1;
+            ApplyFilter();
+        }
+        catch (TaskCanceledException)
+        {
+            //User still writing, do nothing and wait for the next event to trigger
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Error", "Error al buscar sucursales", "error");
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void SetTypeFilter(string type)
+    {
+        _typeFilter = type;
+        _pageIndex  = 1;
+        ApplyFilter();
+    }
+
+    private void OnDateFilterChanged()
+    {
+        _pageIndex = 1;
+        ApplyFilter();
+    }
+
+    private void ClearDateFilter()
+    {
+        _dateFrom  = null;
+        _dateTo    = null;
+        _pageIndex = 1;
+        ApplyFilter();
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        ApplyFilter();
+    }
+
+    // ── Modal: Nueva Compra ────────────────────────────────
+    private void OpenNewModal()
+    {
+        _newSupplierId      = _suppliers.Count == 1 ? _suppliers[0].SupplierId : 0;
+        _newSupplierInvoice = "";
+        _newPurchaseDate    = DateTime.Today;
+        _newNotes           = "";
+        _newLines           = new();
+        _newSubtotal        = 0;
+        _newTaxAmount       = 0;
+        _productSearch      = "";
+        _showProductResults = false;
+        _productResults     = new();
+        _showValidation     = false;
+        _modalError         = "";
+        _showNewModal       = true;
+    }
+
+    private void CloseNewModal() { _showNewModal = false; _modalError = ""; }
+
+    private void HandleProductSearch(ChangeEventArgs e)
+    {
+        _productSearch      = e.Value?.ToString() ?? "";
+        _showProductResults = true;
+        FilterProducts();
+    }
+
+    private void FilterProducts()
+    {
+        if (string.IsNullOrWhiteSpace(_productSearch)) { _productResults = new(); return; }
+        string q = _productSearch.ToLower();
+        _productResults = _products
+            .Where(p => p.Active && (p.Name.ToLower().Contains(q) || p.Barcode.Contains(q)))
+            .Take(8).ToList();
+    }
+
+    private void AddProductLine(Product product)
+    {
+        _showProductResults = false;
+        _productSearch      = "";
+        _productResults     = new();
+
+        var existing = _newLines.FirstOrDefault(l => l.ProductId == product.ProductId);
+        if (existing != null) existing.Quantity++;
+        else _newLines.Add(new NewLine
+        {
+            ProductId      = product.ProductId,
+            ProductName    = product.Name,
+            Barcode        = product.Barcode,
+            Quantity       = 1,
+            UnitCost       = 0,
+            AllowFractional = product.AllowFractional
+        });
+
+        RecalcTotals();
+    }
+
+    private void RemoveLine(NewLine line) { _newLines.Remove(line); RecalcTotals(); }
+
+    private void RecalcTotals() => _newSubtotal = _newLines.Sum(l => l.Quantity * l.UnitCost);
+
+    private async Task SavePurchaseAsync()
+    {
+        _showValidation = true;
+        _modalError     = "";
+
+        if (_newSupplierId == 0 || !_newLines.Any())
+        {
+            _modalError = "Selecciona un proveedor y agrega al menos un producto.";
+            return;
+        }
+
+        var fractionalErrors = _newLines
+            .Where(l => !l.AllowFractional && l.Quantity != Math.Floor(l.Quantity))
+            .Select(l => l.ProductName)
+            .ToList();
+        if (fractionalErrors.Any())
+        {
+            _modalError = $"Estos productos no admiten cantidades fraccionadas: {string.Join(", ", fractionalErrors)}. Usá cantidades enteras (1, 2, 3…).";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            decimal subtotal = _newLines.Sum(l => l.Quantity * l.UnitCost);
+
+            var purchase = new Purchase
+            {
+                StoreId         = posSessionService.StoreId,
+                SupplierId      = _newSupplierId,
+                SystemUserId    = posSessionService.SystemUserId,
+                SupplierInvoice = string.IsNullOrWhiteSpace(_newSupplierInvoice) ? null : _newSupplierInvoice.Trim(),
+                PurchaseDate    = _newPurchaseDate,
+                Subtotal        = subtotal,
+                TaxAmount       = _newTaxAmount,
+                Total           = subtotal + _newTaxAmount,
+                Notes           = string.IsNullOrWhiteSpace(_newNotes) ? null : _newNotes.Trim(),
+            };
+
+            var details = _newLines.Select(l => new PurchaseDetail
+            {
+                ProductId = l.ProductId,
+                Quantity  = l.Quantity,
+                UnitCost  = l.UnitCost,
+                Subtotal  = l.Quantity * l.UnitCost
+            }).ToList();
+
+            long newId = await purchaseRepository.AddFullPurchaseAsync(purchase, details);
+
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", $"Compra #{newId} guardada como pendiente.", "success");
+
+            _showNewModal = false;
+            await LoadPurchasesAsync();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ── Modal: Ver Compra ──────────────────────────────────
+    private async Task OpenViewModal(PurchaseLineDTO p)
+    {
+        _selectedPurchase = p;
+        _loadingDetails   = true;
+        _showViewModal    = true;
+        _selectedDetails  = await purchaseRepository.GetDetailsByPurchaseIdAsync(p.PurchaseId);
+        _loadingDetails   = false;
+    }
+
+    // ── Modal: Confirmar ───────────────────────────────────
+    private void OpenConfirmModal(PurchaseLineDTO p)
+    {
+        _selectedPurchase = p;
+        _confirmError     = "";
+        _paymentMethod    = "CASH";
+        _showConfirmModal = true;
+    }
+
+    private void OpenConfirmFromView()
+    {
+        _showViewModal    = false;
+        _confirmError     = "";
+        _paymentMethod    = "CASH";
+        _showConfirmModal = true;
+    }
+
+    private void CloseConfirmModal()
+    {
+        _showConfirmModal = false;
+        _confirmError     = "";
+        _paymentMethod    = "CASH";
+    }
+
+    private async Task ConfirmPurchaseAsync()
+    {
+        if (_selectedPurchase == null) return;
+        _confirmError = "";
+        _confirming   = true;
+        try
+        {
+            await purchaseRepository.ConfirmAsync(_selectedPurchase.PurchaseId, posSessionService.SystemUserId, _paymentMethod);
+
+            string cashNote = _paymentMethod == "CASH" ? " Salida de caja registrada." : "";
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", $"Compra confirmada. Stock actualizado y movimientos de inventario registrados.{cashNote}", "success");
+
+            CloseConfirmModal();
+            await LoadPurchasesAsync();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _confirmError = ex.Message;
+        }
+        finally
+        {
+            _confirming = false;
+        }
+    }
+
+    // ── VM ─────────────────────────────────────────────────
+    private class NewLine
+    {
+        public long    ProductId      { get; set; }
+        public string  ProductName    { get; set; } = "";
+        public string  Barcode        { get; set; } = "";
+        public decimal Quantity       { get; set; }
+        public decimal UnitCost       { get; set; }
+        public bool    AllowFractional { get; set; }
+    }
+}

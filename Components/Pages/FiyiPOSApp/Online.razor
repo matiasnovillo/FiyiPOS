@@ -1,0 +1,253 @@
+@page "/online"
+
+@using FiyiPOS.Components.Pages.FiyiPOSApp.Desktop.Common
+@using FiyiPOS.Components.Pages.FiyiPOSApp.Desktop.Catalogo
+@using FiyiPOS.Components.Shared.ComponentsForFiyiPOS
+@using FiyiPOS.Services.System
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserStoreBack.Repositories
+
+@inject PosSessionService posSessionService
+@inject CookieService cookieService
+@inject SystemUserRepository systemUserRepository
+@inject SystemUserStoreRepository systemUserStoreRepository
+@inject SystemStatusService statusService
+@implements IDisposable
+
+<PageTitle>FiyiPOS Online | FiyiPOS</PageTitle>
+
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+@if (!_circuitReady)
+{
+    <div id="pos-circuit-loading">
+        <div class="pci-logo"><i class="fas fa-cash-register"></i></div>
+        <div class="pci-spinner"></div>
+        <p class="pci-text">Iniciando sistema...</p>
+    </div>
+}
+
+<_SchemeStyles />
+
+<div class="pos-root">
+
+    @if (!statusService.IsOnline)
+    {
+        <div class="pos-system-down">
+            <div class="pos-system-down-icon"><i class="fas fa-plug-circle-xmark"></i></div>
+            <h2>Sistema caído</h2>
+            <p>@statusService.Message</p>
+            <p class="pos-system-down-sub">
+                <i class="fas fa-spinner fa-spin me-1"></i>
+                Reintentando conexión automáticamente...
+            </p>
+        </div>
+    }
+    else
+    {
+        <div style="display:flex; flex:1; overflow:hidden;">
+            <_SideBar Subtitle="Online"
+                     Groups="_sidebarGroups"
+                     ActiveSection="_currentSection"
+                     OnSectionChanged="ChangeSection"
+                     OnCircuitReady="OnCircuitReady"
+                     ShowShortcuts="false"
+                     ConfirmExitWithCashCut="false"
+                     @bind-Collapsed="_sidebarCollapsed" />
+            <div style="display:flex; flex-direction:column; flex:1; overflow:hidden; min-width:0;">
+            <_SystemBanners />
+            <main class="pos-content">
+            @if (posSessionService.IsAuthenticated && _currentSection != "" && !posSessionService.CanAccess(_currentSection))
+            {
+                <div class="acceso-denegado">
+                    <i class="fas fa-lock"></i>
+                    <p>No tienes permiso para acceder a esta sección.</p>
+                    <span>Contacta al administrador si necesitas acceso.</span>
+                </div>
+            }
+            else
+            {
+                @switch (_currentSection)
+                {
+                    case "movimientos":
+                        <MovimientosModule />
+                        break;
+                    case "consumointerno":
+                        <ConsumoInternoModule />
+                        break;
+                    case "facturas":
+                        <FacturasModule />
+                        break;
+                    case "corte":
+                        <CorteModule />
+                        break;
+                    case "notepad":
+                        <BlocDeNotasModule />
+                        break;
+                    case "productos":
+                        <ProductosModule />
+                        break;
+                    case "inventario":
+                        <InventarioModule />
+                        break;
+                    case "compras":
+                        <ComprasModule />
+                        break;
+                    case "promociones":
+                        <PromocionesModule />
+                        break;
+                    case "clientes":
+                        <ClientesModule />
+                        break;
+                    case "proveedores":
+                        <ProveedoresModule />
+                        break;
+                    case "sucursales":
+                        <SucursalesModule />
+                        break;
+                    case "operadores":
+                        <OperadoresModule />
+                        break;
+                    case "configuracion":
+                        <ConfiguracionModule />
+                        break;
+                    case "reportes":
+                        <ReportesModule />
+                        break;
+                    case "esquema":
+                        <SchemeManagerModule />
+                        break;
+                    case "asistencias":
+                        <AsistenciasModule />
+                        break;
+                    case "categorias":
+                        <CategoriasModule />
+                        break;
+                    case "unidades":
+                        <UnidadesModule />
+                        break;
+                    case "aichat":
+                        <AIChatModule />
+                        break;
+                }
+            }
+            </main>
+            </div>
+        </div>
+    }
+
+    <_StatusBar></_StatusBar>
+
+</div>
+
+@code {
+
+    private bool   _circuitReady      = false;
+    private bool   _sidebarCollapsed  = false;
+    private string _currentSection    = "";
+
+    // Carpetas del SideBar para FiyiPOS Online (mismas secciones que _NavBarOnline)
+    private static readonly _SideBar.SidebarGroup[] _sidebarGroups =
+    [
+        new("ventas",    "Ventas",        "fa-cash-register", ["movimientos", "consumointerno", "facturas", "corte", "notepad"]),
+        new("catalogo",  "Catálogo",      "fa-boxes",         ["productos", "inventario", "compras", "promociones"]),
+        new("contactos", "Contactos",     "fa-address-book",  ["clientes", "proveedores"]),
+        new("admin",     "Administrador", "fa-user-shield",   ["sucursales", "operadores", "configuracion", "reportes", "esquema", "asistencias", "categorias", "unidades", "aichat"]),
+    ];
+
+    private void OnCircuitReady()
+    {
+        _circuitReady = true;
+        // StateHasChanged is called automatically by Blazor after an EventCallback
+    }
+
+    protected override void OnInitialized()
+    {
+        statusService.StatusChanged += OnSystemStatusChanged;
+        posSessionService.OnStoreChanged += OnStoreChanged;
+    }
+
+    private void OnSystemStatusChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnStoreChanged()
+    {
+        _currentSection = "";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ChangeSection(string section)
+    {
+        if (!posSessionService.CanAccess(section)) return;
+        _currentSection = section;
+    }
+
+    public void Dispose()
+    {
+        statusService.StatusChanged -= OnSystemStatusChanged;
+        posSessionService.OnStoreChanged -= OnStoreChanged;
+    }
+
+    // Igual que PuntoDeVenta: si el circuito arranca sin sesión (F5 o link
+    // directo), la restauramos desde la cookie antes de mandar a /entrar.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || posSessionService.IsAuthenticated) return;
+
+        try
+        {
+            long? systemUserId = await cookieService.GetDecryptedPosSystemUserIdAsync();
+
+            if (systemUserId.HasValue)
+            {
+                SystemUser? systemUser = await systemUserRepository.GetOneBySystemUserIdAsync(systemUserId.Value);
+
+                if (systemUser != null && systemUser.Active)
+                {
+                    List<Store> stores = await systemUserStoreRepository.GetStoresByUserIdAsync(systemUser.SystemUserId);
+                    Store? store = stores.FirstOrDefault();
+
+                    posSessionService.SetSession(
+                        systemUser.SystemUserId,
+                        store?.StoreId ?? 0,
+                        store?.Name ?? "",
+                        systemUser.Name,
+                        systemUser.Role);
+                    posSessionService.SetAccessibleStores(stores);
+                    posSessionService.SetBillingDueDate(store?.BillingDueDate);
+
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    NavigationManager.NavigateTo("/entrar");
+                }
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/entrar");
+            }
+        }
+        catch (Exception ex)
+        {
+            await failureRepository.AddAsync(new Failure
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source    ?? "",
+                StackTrace               = ex.StackTrace ?? "",
+            });
+            NavigationManager.NavigateTo("/entrar");
+        }
+    }
+}

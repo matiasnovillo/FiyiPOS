@@ -1,0 +1,182 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.AttendanceBack.DTOs
+@using FiyiPOS.Areas.FiyiPOS.Common.AttendanceBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+
+@inject AttendanceRepository attendanceRepository
+@inject PosSessionService    posSessionService
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">ASISTENCIAS</div>
+    <div class="header-sub">Registro de entradas y salidas de operadores en todas tus sucursales.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total del período</div>
+        <div class="stat-value">@_rows.Count</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">En curso</div>
+        <div class="stat-value">@_rows.Count(r => r.IsActive)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Completadas</div>
+        <div class="stat-value">@_rows.Count(r => !r.IsActive)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="att-date-filter">
+        <label class="att-date-label">Desde</label>
+        <input type="date" class="att-date-input"
+               value="@_from.ToString("yyyy-MM-dd")"
+               @onchange="OnFromChanged" />
+        <label class="att-date-label">Hasta</label>
+        <input type="date" class="att-date-input"
+               value="@_to.ToString("yyyy-MM-dd")"
+               @onchange="OnToChanged" />
+        <button class="abtn abtn-blue" @onclick="LoadAsync">
+            <i class="fas fa-search"></i> Buscar
+        </button>
+    </div>
+
+    @if (_storeOptions.Count > 1)
+    {
+        <select class="att-store-select" @bind="_storeFilter">
+            <option value="0">Todas las sucursales</option>
+            @foreach (var s in _storeOptions)
+            {
+                <option value="@s.StoreId">@s.Name</option>
+            }
+        </select>
+    }
+</div>
+
+<!-- ── TABLE ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando asistencias...</p>
+        </div>
+    }
+    else if (!_displayed.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-user-clock"></i>
+            <p>No hay registros en el período seleccionado</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Operador</th>
+                    <th>Sucursal</th>
+                    <th>Entrada</th>
+                    <th>Salida</th>
+                    <th>Duración</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _displayed)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:var(--pos-primary)">
+                                    @row.OperatorName.Substring(0, 1).ToUpper()
+                                </div>
+                                <span>@row.OperatorName</span>
+                            </div>
+                        </td>
+                        <td>@row.StoreName</td>
+                        <td>@row.CheckIn.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@(row.CheckOut.HasValue ? row.CheckOut.Value.ToString("dd/MM/yyyy HH:mm") : "—")</td>
+                        <td class="att-duration">@row.Duration</td>
+                        <td>
+                            @if (row.IsActive)
+                            {
+                                <span class="att-badge att-badge-active">
+                                    <i class="fas fa-circle att-dot"></i> En curso
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="att-badge att-badge-done">
+                                    <i class="fas fa-check"></i> Completado
+                                </span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private bool                  _loading      = true;
+    private List<AttendanceRowDTO> _rows        = new();
+    private DateTime              _from         = DateTime.Today;
+    private DateTime              _to           = DateTime.Today;
+    private long                  _storeFilter  = 0;
+
+    private List<(long StoreId, string Name)> _storeOptions = new();
+
+    private IEnumerable<AttendanceRowDTO> _displayed =>
+        _storeFilter == 0
+            ? _rows
+            : _rows.Where(r => r.StoreName == _storeOptions
+                .FirstOrDefault(s => s.StoreId == _storeFilter).Name);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _storeOptions = posSessionService.AccessibleStores
+            .Select(s => (s.StoreId, s.Name))
+            .ToList();
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var storeIds = _storeOptions.Select(s => s.StoreId).ToList();
+            _rows = await attendanceRepository.GetAllByStoreIdsAsync(
+                storeIds,
+                _from.Date,
+                _to.Date.AddDays(1));
+        }
+        catch { _rows = new(); }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnFromChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+            _from = d;
+        await LoadAsync();
+    }
+
+    private async Task OnToChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+            _to = d;
+        await LoadAsync();
+    }
+}

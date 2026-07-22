@@ -1,0 +1,299 @@
+@page "/crear-cuenta"
+
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserStoreBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.UnitBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.UnitBack.Entities
+@using FiyiPOS.Mailing
+@using FiyiPOS.Components.Shared.ComponentsForHome
+
+@inject SystemUserRepository         systemUserRepository
+@inject StoreRepository              storeRepository
+@inject SystemUserStoreRepository    systemUserStoreRepository
+@inject ConfigRepository             configRepository
+@inject UnitRepository               unitRepository
+@inject Email                        emailService
+@inject NavigationManager            NavigationManager
+
+<PageTitle>Crear cuenta | FiyiPOS</PageTitle>
+
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<!-- Navbar -->
+<div class="container position-sticky z-index-sticky top-0">
+    <div class="row">
+        <div class="col-12">
+            <_NavBar></_NavBar>
+        </div>
+    </div>
+</div>
+
+<div class="page-header min-vh-100 lp-page-bg">
+    <div class="container mb-4">
+        <div class="row mt-n4 justify-content-center">
+            <div class="col-xl-4 col-lg-5 col-md-7 mx-auto">
+                <div class="card mt-8">
+                    <div class="card-header p-0 position-relative mt-n4 mx-3 z-index-2">
+                        <div class="bg-gradient-primary shadow-primary border-radius-lg py-3 pe-1 text-center py-4">
+                            @if (_success)
+                            {
+                                <h4 class="font-weight-bolder text-white mt-1">
+                                    <i class="fas fa-envelope-open-text me-2"></i>¡Revisá tu correo!
+                                </h4>
+                                <p class="mb-1 text-sm text-white">
+                                    Enviamos un enlace de activación a <strong>@_emailSent</strong>
+                                </p>
+                            }
+                            else
+                            {
+                                <h4 class="font-weight-bolder text-white mt-1">
+                                    Crear cuenta
+                                </h4>
+                                <p class="mb-1 text-sm text-white">
+                                    Completá tus datos para registrarte
+                                </p>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+                        @if (_success)
+                        {
+                            <div class="text-center py-3">
+                                <p class="text-sm text-muted mb-3">
+                                    Hacé clic en el enlace para activar tu cuenta.<br>
+                                    Si no lo ves, revisá la carpeta de spam.
+                                </p>
+                                <NavLink href="/entrar" class="btn bg-gradient-primary w-100">
+                                    Ir al inicio de sesión
+                                </NavLink>
+                            </div>
+                        }
+                        else
+                        {
+                            <form @onsubmit="Submit" @formname="create-account-form" method="post">
+                                <AntiforgeryToken />
+
+                                <div class="input-group input-group-static mb-3">
+                                    <label>
+                                        <i class="fas fa-user fa-xl"></i>&nbsp;
+                                        <span class="fs-6">Nombre completo</span>
+                                    </label>
+                                    <input type="text" class="form-control fs-6"
+                                           @bind="Model!.FullName" autocomplete="name" />
+                                </div>
+
+                                <div class="input-group input-group-static mb-3">
+                                    <label>
+                                        <i class="fas fa-envelope fa-xl"></i>&nbsp;
+                                        <span class="fs-6">Email</span>
+                                    </label>
+                                    <input type="email" class="form-control fs-6"
+                                           @bind="Model!.Email" autocomplete="email" />
+                                </div>
+
+                                <div class="input-group input-group-static mb-3">
+                                    <label>
+                                        <i class="fas fa-store fa-xl"></i>&nbsp;
+                                        <span class="fs-6">Nombre de tu primera sucursal</span>
+                                    </label>
+                                    <input type="text" class="form-control fs-6"
+                                           @bind="Model!.CompanyName" autocomplete="organization" />
+                                </div>
+
+                                <div class="input-group input-group-static mb-3">
+                                    <label>
+                                        <i class="fas fa-key fa-xl"></i>&nbsp;
+                                        <span class="fs-6">Contraseña</span>
+                                    </label>
+                                    <input type="password" class="form-control fs-6"
+                                           @bind="Model!.Password" autocomplete="new-password" />
+                                </div>
+
+                                <div class="input-group input-group-static mb-3">
+                                    <label>
+                                        <i class="fas fa-key fa-xl"></i>&nbsp;
+                                        <span class="fs-6">Confirmar contraseña</span>
+                                    </label>
+                                    <input type="password" class="form-control fs-6"
+                                           @bind="Model!.ConfirmPassword" autocomplete="new-password" />
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(_errorMessage))
+                                {
+                                    <div class="alert alert-warning fs-6 py-2 px-3 mb-3">
+                                        <i class="fas fa-exclamation-triangle me-1"></i>
+                                        @_errorMessage
+                                    </div>
+                                }
+
+                                <div class="container text-center">
+                                    <button type="submit"
+                                            class="btn btn-primary mt-3 fs-6"
+                                            disabled="@_working">
+                                        @(_working ? "Procesando..." : "Crear cuenta")
+                                    </button>
+                                </div>
+                            </form>
+                        }
+                    </div>
+
+                    <div class="card-footer text-center pt-0 px-lg-2 px-1">
+                        <p class="mb-4 fs-6 mx-auto">
+                            ¿Ya tenés una cuenta?
+                            <NavLink href="/entrar" class="text-primary text-gradient fw-bold fs-6">
+                                Iniciar sesión
+                            </NavLink>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    [SupplyParameterFromForm]
+    public SignUpModel? Model { get; set; }
+
+    private string _errorMessage = "";
+    private string _emailSent    = "";
+    private bool   _success      = false;
+    private bool   _working      = false;
+
+    protected override void OnInitialized() => Model ??= new();
+
+    private async Task Submit()
+    {
+        _errorMessage = "";
+        _working      = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(Model!.FullName)    ||
+                string.IsNullOrWhiteSpace(Model.Email)        ||
+                string.IsNullOrWhiteSpace(Model.CompanyName)  ||
+                string.IsNullOrWhiteSpace(Model.Password))
+            {
+                _errorMessage = "Completá todos los campos.";
+                return;
+            }
+
+            if (Model.Password != Model.ConfirmPassword)
+            {
+                _errorMessage = "Las contraseñas no coinciden.";
+                return;
+            }
+
+            if (Model.Password.Length < 6)
+            {
+                _errorMessage = "La contraseña debe tener al menos 6 caracteres.";
+                return;
+            }
+
+            if (await systemUserRepository.ExistsByUsernameAsync(Model.Email))
+            {
+                _errorMessage = "Ya existe una cuenta con ese email.";
+                return;
+            }
+
+            // 1. Crear la sucursal (empresa)
+            var store = new Store
+            {
+                Name           = Model.CompanyName.Trim(),
+                Active         = true,
+                CreatedAt      = DateTime.Now,
+                BillingDueDate = DateTime.Now.AddDays(30),
+            };
+            await storeRepository.AddAsync(store);
+
+            // 2. Crear el usuario como admin de esa sucursal
+            string token = Guid.NewGuid().ToString("N");
+
+            var user = new SystemUser
+            {
+                Name            = Model.FullName.Trim(),
+                Username        = Model.Email.Trim().ToLower(),
+                PasswordHash    = FiyiPOS.Library.Security.EncryptString(Model.Password),
+                Role            = "admin",
+                Active          = false,
+                CreatedAt       = DateTime.Now,
+                ActivationToken = token,
+            };
+            await systemUserRepository.AddAsync(user);
+
+            // 3. Vincular usuario ↔ sucursal
+            await systemUserStoreRepository.AssignAsync(user.SystemUserId, store.StoreId);
+
+            // 4. Configuración por defecto para la nueva sucursal
+            await configRepository.AddRangeAsync(new Config[]
+            {
+                new() { StoreId = store.StoreId, ConfigKey = "default_tax_rate",      Value = "12",                    Description = "Tasa de impuesto por defecto en %" },
+                new() { StoreId = store.StoreId, ConfigKey = "ticket_footer",         Value = "Gracias por su compra", Description = "Leyenda al pie del ticket" },
+                new() { StoreId = store.StoreId, ConfigKey = "folio_prefix",          Value = "T",                     Description = "Prefijo del número de ticket (ej: T-000001)" },
+                new() { StoreId = store.StoreId, ConfigKey = "folio_padding",         Value = "6",                     Description = "Longitud numérica del folio con ceros" },
+                new() { StoreId = store.StoreId, ConfigKey = "allow_negative_stock",  Value = "1",                     Description = "Positivo = Permite vender aunque no haya existencia" },
+                new() { StoreId = store.StoreId, ConfigKey = "require_customer_sale", Value = "0",                     Description = "Positivo = Obliga asignar un cliente antes de cobrar" },
+                new() { StoreId = store.StoreId, ConfigKey = "currency_symbol",       Value = "$",                     Description = "Símbolo monetario mostrado en pantalla" },
+            });
+
+            // 4b. Unidades de medida por defecto para la nueva sucursal
+            await unitRepository.AddRangeAsync(new Unit[]
+            {
+                new() { StoreId = store.StoreId, Name = "Pieza",     Abbreviation = "pz",  Active = true },
+                new() { StoreId = store.StoreId, Name = "Kilogramo", Abbreviation = "kg",  Active = true },
+                new() { StoreId = store.StoreId, Name = "Litro",     Abbreviation = "L",   Active = true },
+                new() { StoreId = store.StoreId, Name = "Metro",     Abbreviation = "m",   Active = true },
+                new() { StoreId = store.StoreId, Name = "Caja",      Abbreviation = "cja", Active = true },
+                new() { StoreId = store.StoreId, Name = "Paquete",   Abbreviation = "paq", Active = true },
+            });
+
+            // 5. Enviar email de activación
+            string baseUri      = NavigationManager.BaseUri.TrimEnd('/');
+            string activationUrl = $"{baseUri}/activar?token={token}";
+            await emailService.SendSignUpEmailAsync(Model.Email, Model.FullName, activationUrl);
+
+            _emailSent = Model.Email;
+            _success   = true;
+        }
+        catch (Exception ex)
+        {
+            await failureRepository.AddAsync(new Failure
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source    ?? "",
+                StackTrace               = ex.StackTrace ?? "",
+            });
+            _errorMessage = "Ocurrió un error inesperado. Intentá nuevamente.";
+        }
+        finally
+        {
+            _working = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public class SignUpModel
+    {
+        public string FullName        { get; set; } = "";
+        public string Email           { get; set; } = "";
+        public string CompanyName     { get; set; } = "";
+        public string Password        { get; set; } = "";
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

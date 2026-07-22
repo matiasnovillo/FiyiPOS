@@ -1,0 +1,582 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.SupplierBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.SupplierBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+@using System.Text.RegularExpressions
+
+@inject SupplierRepository         supplierRepository
+@inject PosSessionService          posSessionService
+@inject IJSRuntime                 JS
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">ADMINISTRACIÓN DE PROVEEDORES</div>
+    <div class="header-sub">Gestiona los proveedores que surten tu inventario.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de proveedores</div>
+        <div class="stat-value">@_totalRecordsInDb</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Proveedores activos</div>
+        <div class="stat-value">@_totalActive</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Proveedores inactivos</div>
+        <div class="stat-value">@(_totalRecordsInDb - _totalActive)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nombre, contacto, correo o teléfono..."
+               @bind="_searchText" @oninput="OnSearchInput" />
+    </div>
+    <button class="abtn abtn-primary" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nuevo Proveedor
+    </button>
+</div>
+
+<!-- ── FILTER CHIPS ── -->
+<div class="filter-chips">
+    <button class="filter-chip @(_activeFilter == true ? "active" : "")"
+            @onclick='() => SetActiveFilter(true)'>
+        <i class="fas fa-check-circle"></i> Activos
+    </button>
+    <button class="filter-chip @(_activeFilter == false ? "active" : "")"
+            @onclick='() => SetActiveFilter(false)'>
+        <i class="fas fa-ban"></i> Inactivos
+    </button>
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando proveedores...</p>
+        </div>
+    }
+    else if (!_pageSuppliers.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-truck"></i>
+            <p>No hay proveedores registrados</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Proveedor</th>
+                    <th>Contacto</th>
+                    <th>Teléfono</th>
+                    <th>Correo</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _pageSuppliers)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:@GetAvatarColor(s.SupplierId);">
+                                    @GetInitial(s)
+                                </div>
+                                <div>
+                                    <div class="entity-link" @onclick="() => OpenEditModal(s)">@s.Name</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">
+                            @(string.IsNullOrWhiteSpace(s.ContactName) ? "—" : s.ContactName)
+                        </td>
+                        <td class="fs-6">
+                            @(string.IsNullOrWhiteSpace(s.Phone) ? "—" : s.Phone)
+                        </td>
+                        <td class="fs-6">
+                            @(string.IsNullOrWhiteSpace(s.Email) ? "—" : s.Email)
+                        </td>
+                        <td>
+                            @if (s.Active)
+                            {
+                                <span class="credit-badge credit-yes">
+                                    <i class="fas fa-check-circle me-1"></i>Activo
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="credit-badge credit-no">Inactivo</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenEditModal(s)">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="abtn abtn-danger" @onclick="() => ShowDeleteModal(s)">
+                                <i class="fas fa-trash-alt"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_totalRecordsInDb > 0)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+        @for (int p = winStart; p <= winEnd; p++)
+        {
+            int pg = p;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+
+<!-- ── MODAL: Nuevo / Editar proveedor ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel">
+
+            <div class="panel-header">
+                <span>
+                    <i class="fas @(_editingId == null ? "fa-plus" : "fa-edit") me-2"></i>
+                    @(_editingId == null ? "Nuevo proveedor" : "Editar proveedor")
+                </span>
+                <button class="panel-close" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+
+                <div class="panel-grid">
+
+                    <div class="field field-full">
+                        <label>Razón social / Nombre <span class="required-star">*</span></label>
+                        <input type="text" @bind="_form.Name"
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Name) ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field">
+                        <label>Nombre de contacto</label>
+                        <input type="text" @bind="_form.ContactName" />
+                    </div>
+
+                    <div class="field">
+                        <label>Teléfono</label>
+                        <input type="text" @bind="_form.Phone" />
+                    </div>
+
+                    <div class="field">
+                        <label>Correo electrónico</label>
+                        <input type="email" @bind="_form.Email" />
+                    </div>
+
+                    <div class="field">
+                        <label>Dirección</label>
+                        <input type="text" @bind="_form.Address" />
+                    </div>
+
+                    <div class="field">
+                        <label>CUIT</label>
+                        <input type="text" @bind="_form.TaxId" />
+                    </div>
+
+                </div>
+
+                <div class="field field-full">
+                    <label>Notas / Condiciones de pago</label>
+                    <textarea @bind="_form.Notes" rows="3"></textarea>
+                </div>
+
+                <div class="field" style="margin-top:.25rem;">
+                    <label class="check-label">
+                        <input type="checkbox" @bind="_form.Active" />
+                        Proveedor activo
+                    </label>
+                </div>
+
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="SaveProveedor" disabled="@_saving">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Confirmar eliminación ── -->
+@if (_showDeleteModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:420px;">
+            <div class="panel-header">
+                <span><i class="fas fa-trash-alt me-2"></i>Confirmar eliminación</span>
+                <button class="panel-close fs-3" @onclick="() => _showDeleteModal = false">×</button>
+            </div>
+            <div class="panel-body">
+                <p class="fs-6 text-nowrap">¿Eliminar al proveedor <strong class="fs-6">@_selected?.Name</strong>?</p>
+                <p class="fs-6" style="color:var(--pos-danger)">Esta acción no se puede deshacer <i class="fas fa-exclamation-triangle"></i></p>
+            </div>
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDeleteModal = false">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmDelete">
+                    <i class="fas fa-trash-alt"></i> Sí, eliminar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool       _loading         = true;
+    private bool       _showModal       = false;
+    private bool       _showDeleteModal = false;
+    private bool       _showValidation  = false;
+    private bool       _saving          = false;
+    private bool?      _activeFilter    = null;
+    private long?      _editingId       = null;
+    private string     _searchText      = "";
+    private string     _modalError      = "";
+
+    private List<Supplier> _pageSuppliers    = new();
+    private long           _totalRecordsInDb = 0;
+    private int            _totalActive      = 0;
+    private int            _pageIndex        = 1;
+    private const int      _pageSize         = 10;
+    private int            _totalPages       = 1;
+    private Supplier?      _selected;
+    private SupplierFormVM _form             = new();
+
+    private static readonly string[] _avatarColors =
+    [
+        "#3d5166", "#5b6abf", "#0f766e", "#b45309",
+        "#7c3aed", "#0369a1", "#be185d", "#15803d"
+    ];
+
+    private CancellationTokenSource cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProveedores();
+    }
+
+    private async Task LoadProveedores()
+    {
+        _loading = true;
+        try
+        {
+            _totalActive = await supplierRepository.CountActiveAsync(posSessionService.StoreId);
+            await LoadPage();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SetActiveFilter(bool value)
+    {
+        _activeFilter = _activeFilter == value ? null : value;
+        _pageIndex    = 1;
+        await LoadPage();
+    }
+
+    private async Task LoadPage()
+    {
+        var result = await supplierRepository.GetAllPaginatedBySearchAsync(
+            _searchText, _pageIndex, _pageSize, _activeFilter, posSessionService.StoreId);
+
+        _totalRecordsInDb = result.TotalRecordsInDatabase;
+        _totalPages       = Math.Max(1, result.TotalPages);
+        _pageSuppliers    = result.ListSupplier;
+
+        if (_pageSuppliers.Count == 0 && _pageIndex > 1)
+        {
+            _pageIndex = _totalPages;
+            result = await supplierRepository.GetAllPaginatedBySearchAsync(
+                _searchText, _pageIndex, _pageSize, _activeFilter, posSessionService.StoreId);
+            _pageSuppliers = result.ListSupplier;
+        }
+    }
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        await LoadPage();
+    }
+
+    private async void OnSearchInput(ChangeEventArgs e)
+    {
+        cts.Cancel();
+        cts = new();
+
+        try
+        {
+             await Task.Delay(300, cts.Token);
+
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex = 1;
+            await LoadPage();
+        }
+        catch (TaskCanceledException)
+        {
+            //User still writing, do nothing and wait for the next event to trigger
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+            "Error", "Error al buscar proveedores", "error");
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        } 
+    }
+
+    private void OpenNewModal()
+    {
+        _editingId      = null;
+        _selected       = null;
+        _form           = new SupplierFormVM();
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+    }
+
+    private void OpenEditModal(Supplier s)
+    {
+        _editingId = s.SupplierId;
+        _selected  = s;
+        _form = new SupplierFormVM
+        {
+            Name        = s.Name,
+            ContactName = s.ContactName,
+            Phone       = s.Phone,
+            Email       = s.Email,
+            Address     = s.Address,
+            TaxId       = s.TaxId,
+            Notes       = s.Notes,
+            Active      = s.Active,
+        };
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal  = false;
+        _modalError = "";
+    }
+
+    private async Task SaveProveedor()
+    {
+        _showValidation = true;
+        _modalError     = "";
+
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _modalError = "El nombre / razón social es requerido.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            if (_editingId == null)
+            {
+                var nuevo = new Supplier
+                {
+                    StoreId                  = posSessionService.StoreId,
+                    DateTimeCreation         = DateTime.Now,
+                    DateTimeLastModification = DateTime.Now,
+                    UserCreationId           = posSessionService.SystemUserId,
+                    UserLastModificationId   = posSessionService.SystemUserId,
+                    Active                   = _form.Active,
+                    Name                     = _form.Name.Trim(),
+                    ContactName              = _form.ContactName.Trim(),
+                    Phone                    = _form.Phone.Trim(),
+                    Email                    = _form.Email.Trim(),
+                    Address                  = _form.Address.Trim(),
+                    TaxId                    = _form.TaxId.Trim(),
+                    Notes                    = _form.Notes.Trim(),
+                };
+                await supplierRepository.AddAsync(nuevo);
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Proveedor agregado correctamente.", "success");
+            }
+            else
+            {
+                _selected!.DateTimeLastModification = DateTime.Now;
+                _selected.UserLastModificationId    = posSessionService.SystemUserId;
+                _selected.Active                    = _form.Active;
+                _selected.Name                      = _form.Name.Trim();
+                _selected.ContactName               = _form.ContactName.Trim();
+                _selected.Phone                     = _form.Phone.Trim();
+                _selected.Email                     = _form.Email.Trim();
+                _selected.Address                   = _form.Address.Trim();
+                _selected.TaxId                     = _form.TaxId.Trim();
+                _selected.Notes                     = _form.Notes.Trim();
+                await supplierRepository.UpdateAsync(_selected);
+                await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Proveedor actualizado correctamente.", "success");
+            }
+
+            _showModal = false;
+            await LoadProveedores();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+
+    private void ShowDeleteModal(Supplier s)
+    {
+        _selected        = s;
+        _showDeleteModal = true;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        _showDeleteModal = false;
+        if (_selected == null) return;
+        try
+        {
+            await supplierRepository.DeleteOneBySupplierIdAsync(_selected.SupplierId);
+            _selected = null;
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", "Proveedor eliminado correctamente.", "success");
+            await LoadProveedores();
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source ?? "",
+                StackTrace               = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente", NotificationTypeForJs.Error);
+        }
+    }
+
+    private static string GetInitial(Supplier s) =>
+        s.Name.Length > 0 ? s.Name[0].ToString().ToUpper() : "?";
+
+    private static string GetAvatarColor(long id) =>
+        _avatarColors[id % _avatarColors.Length];
+
+    private class SupplierFormVM
+    {
+        public string Name        { get; set; } = "";
+        public string ContactName { get; set; } = "";
+        public string Phone       { get; set; } = "";
+        public string Email       { get; set; } = "";
+        public string Address     { get; set; } = "";
+        public string TaxId       { get; set; } = "";
+        public string Notes       { get; set; } = "";
+        public bool   Active      { get; set; } = true;
+    }
+}

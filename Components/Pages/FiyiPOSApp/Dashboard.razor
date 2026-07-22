@@ -1,0 +1,132 @@
+@page "/panel-de-control"
+
+@using FiyiPOS.Services.System
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserStoreBack.Repositories
+
+@inject PosSessionService posSessionService
+@inject CookieService cookieService
+@inject SystemUserRepository systemUserRepository
+@inject SystemUserStoreRepository systemUserStoreRepository
+
+<PageTitle>Panel de Control | FiyiPOS</PageTitle>
+
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<div class="dashp">
+
+    <div class="dashp-topbar">
+        <div class="dashp-brand">
+            <i class="fas fa-cash-register"></i> FiyiPOS
+        </div>
+        @if (posSessionService.IsAuthenticated)
+        {
+            <div class="dashp-user">
+                <span class="dashp-user-name">@posSessionService.OperatorName</span>
+                <span class="dashp-user-store"><i class="fas fa-store me-1"></i>@posSessionService.StoreName</span>
+            </div>
+        }
+    </div>
+
+    <div class="dashp-body">
+        <h1 class="dashp-title">¿Con qué sistema<br><span>trabajás hoy?</span></h1>
+
+        <div class="dashp-grid">
+
+            <button class="dashp-card" @onclick='() => Go("/punto-de-venta")'>
+                <i class="fas fa-cash-register dashp-card-icon"></i>
+                <span class="dashp-card-name">FiyiPOS Físico</span>
+                <span class="dashp-card-desc">Punto de venta presencial</span>
+            </button>
+
+            <button class="dashp-card" @onclick='() => Go("/online")'>
+                <i class="fas fa-globe dashp-card-icon"></i>
+                <span class="dashp-card-name">FiyiPOS Online</span>
+                <span class="dashp-card-desc">Catálogo y pedidos online</span>
+            </button>
+
+            <button class="dashp-card" @onclick='() => Go("/resto")'>
+                <i class="fas fa-utensils dashp-card-icon"></i>
+                <span class="dashp-card-name">FiyiPOS Restó</span>
+                <span class="dashp-card-desc">Mesas, comandas y cocina</span>
+            </button>
+
+            <button class="dashp-card" @onclick='() => Go("/canchas")'>
+                <i class="fas fa-futbol dashp-card-icon"></i>
+                <span class="dashp-card-name">FiyiPOS Canchas</span>
+                <span class="dashp-card-desc">Reservas y turnos por horario</span>
+            </button>
+
+        </div>
+    </div>
+
+</div>
+
+@code {
+
+    private void Go(string route) => NavigationManager.NavigateTo(route);
+
+    // Igual que PuntoDeVenta: si el circuito arranca sin sesión (F5 o link
+    // directo), la restauramos desde la cookie antes de mandar a /entrar.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || posSessionService.IsAuthenticated) return;
+
+        try
+        {
+            long? systemUserId = await cookieService.GetDecryptedPosSystemUserIdAsync();
+
+            if (systemUserId.HasValue)
+            {
+                SystemUser? systemUser = await systemUserRepository.GetOneBySystemUserIdAsync(systemUserId.Value);
+
+                if (systemUser != null && systemUser.Active)
+                {
+                    List<Store> stores = await systemUserStoreRepository.GetStoresByUserIdAsync(systemUser.SystemUserId);
+                    Store? store = stores.FirstOrDefault();
+
+                    posSessionService.SetSession(
+                        systemUser.SystemUserId,
+                        store?.StoreId ?? 0,
+                        store?.Name ?? "",
+                        systemUser.Name,
+                        systemUser.Role);
+                    posSessionService.SetAccessibleStores(stores);
+                    posSessionService.SetBillingDueDate(store?.BillingDueDate);
+
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    NavigationManager.NavigateTo("/entrar");
+                }
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/entrar");
+            }
+        }
+        catch (Exception ex)
+        {
+            await failureRepository.AddAsync(new Failure
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source    ?? "",
+                StackTrace               = ex.StackTrace ?? "",
+            });
+            NavigationManager.NavigateTo("/entrar");
+        }
+    }
+}

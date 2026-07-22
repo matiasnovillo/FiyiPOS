@@ -1,0 +1,488 @@
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.CategoryBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Catalogo.CategoryBack.Entities
+@using FiyiPOS.Services.FiyiPOS
+
+@inject CategoryRepository  categoryRepository
+@inject PosSessionService   posSessionService
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">CATEGORÍAS DE PRODUCTOS</div>
+    <div class="header-sub">Organizá tus productos agrupándolos en categorías para facilitar la búsqueda y los reportes.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total de categorías</div>
+        <div class="stat-value">@_all.Count</div>
+    </div>
+    <div class="stat-card c-primary">
+        <div class="stat-label">Categorías activas</div>
+        <div class="stat-value">@_all.Count(c => c.Active)</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Inactivas</div>
+        <div class="stat-value">@_all.Count(c => !c.Active)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nombre o descripción..."
+               @bind="_searchText" @oninput="OnSearchInput" />
+    </div>
+    <button class="abtn abtn-primary" @onclick="OpenNewModal">
+        <i class="fas fa-plus"></i> Nueva categoría
+    </button>
+</div>
+
+<!-- ── TABLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando categorías...</p>
+        </div>
+    }
+    else if (!_paginated.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-tags"></i>
+            <p>@(string.IsNullOrWhiteSpace(_searchText) ? "No hay categorías registradas" : "Sin resultados para la búsqueda")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var cat in _paginated)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:@GetAvatarColor(cat.CategoryId);">
+                                    @cat.Name.Substring(0, 1).ToUpper()
+                                </div>
+                                <div class="entity-link fs-6" @onclick="() => OpenEditModal(cat)">
+                                    @cat.Name
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6" style="color:var(--pos-text-muted);">
+                            @(string.IsNullOrWhiteSpace(cat.Description) ? "—" : cat.Description)
+                        </td>
+                        <td>
+                            @if (cat.Active)
+                            {
+                                <span class="credit-badge credit-yes fs-6">
+                                    <i class="fas fa-check-circle me-1"></i>Activa
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="credit-badge credit-no fs-6">Inactiva</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="abtn abtn-primary" @onclick="() => OpenEditModal(cat)">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="abtn abtn-danger" @onclick="() => ShowDeleteModal(cat)">
+                                <i class="fas fa-trash-alt"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- ── PAGINACIÓN ── -->
+@{
+    int winStart = Math.Max(1, _pageIndex - 2);
+    int winEnd   = Math.Min(_totalPages, _pageIndex + 2);
+    if (winEnd - winStart < 4 && _totalPages > 5)
+    {
+        if (winStart == 1) winEnd   = Math.Min(5, _totalPages);
+        else               winStart = Math.Max(1, winEnd - 4);
+    }
+}
+@if (_totalPages > 1)
+{
+    <div class="pg-bar">
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex - 1)" disabled="@(_pageIndex == 1)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+
+        @if (winStart > 1)
+        {
+            <button class="pg-btn @(1 == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(1)">1</button>
+            @if (winStart > 2) { <span class="pg-ellipsis">…</span> }
+        }
+
+        @for (int p = winStart; p <= winEnd; p++)
+        {
+            int pg = p;
+            <button class="pg-btn @(pg == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(pg)">@pg</button>
+        }
+
+        @if (winEnd < _totalPages)
+        {
+            @if (winEnd < _totalPages - 1) { <span class="pg-ellipsis">…</span> }
+            <button class="pg-btn @(_totalPages == _pageIndex ? "pg-active" : "")" @onclick="() => GoToPage(_totalPages)">@_totalPages</button>
+        }
+
+        <button class="pg-btn" @onclick="() => GoToPage(_pageIndex + 1)" disabled="@(_pageIndex == _totalPages)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+<!-- ── MODAL: Nuevo / Editar ── -->
+@if (_showModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:520px;">
+
+            <div class="panel-header">
+                <span>
+                    <i class="fas @(_editingId == null ? "fa-plus" : "fa-edit") me-2"></i>
+                    @(_editingId == null ? "Nueva categoría" : "Editar categoría")
+                </span>
+                <button class="panel-close fs-3" @onclick="CloseModal">×</button>
+            </div>
+
+            <div class="panel-body">
+                <div class="panel-grid">
+
+                    <div class="field field-full">
+                        <label>Nombre <span class="required-star">*</span></label>
+                        <input type="text" maxlength="100"
+                               @bind="_form.Name"
+                               placeholder="Ej: Bebidas, Electrónica, Ropa..."
+                               class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Name) ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field field-full">
+                        <label>Descripción</label>
+                        <textarea maxlength="300" rows="3"
+                                  placeholder="Descripción opcional de la categoría..."
+                                  @bind="_form.Description"></textarea>
+                    </div>
+
+                    <div class="field field-full">
+                        <label class="check-label">
+                            <input type="checkbox" @bind="_form.Active" />
+                            <span class="text-uppercase">Categoría activa</span>
+                        </label>
+                    </div>
+
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="dialog-error">
+                    <i class="fas fa-exclamation-triangle"></i> @_modalError
+                </div>
+            }
+
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="CloseModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="SaveAsync" disabled="@_saving">
+                    <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
+                    @(_saving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+
+        </div>
+    </div>
+}
+
+<!-- ── MODAL: Confirmar eliminación ── -->
+@if (_showDeleteModal)
+{
+    <div class="modal-overlay">
+        <div class="panel" style="max-width:420px;">
+            <div class="panel-header">
+                <span><i class="fas fa-trash-alt me-2"></i>Confirmar eliminación</span>
+                <button class="panel-close fs-3" @onclick="() => _showDeleteModal = false">×</button>
+            </div>
+            <div class="panel-body">
+                <p class="fs-6">¿Eliminar la categoría <strong class="fs-6">@_selected?.Name</strong>?</p>
+                <p class="fs-6" style="color:var(--pos-danger);margin-top:.5rem;">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    Los productos vinculados quedarán sin categoría.
+                </p>
+            </div>
+            <div class="panel-footer">
+                <button class="abtn abtn-danger" @onclick="() => _showDeleteModal = false">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="abtn abtn-success" @onclick="ConfirmDeleteAsync">
+                    <i class="fas fa-trash-alt"></i> Sí, eliminar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool   _loading         = true;
+    private bool   _showModal       = false;
+    private bool   _showDeleteModal = false;
+    private bool   _showValidation  = false;
+    private bool   _saving          = false;
+    private long?  _editingId       = null;
+    private string _searchText      = "";
+    private string _modalError      = "";
+
+    private List<Category> _all       = new();
+    private List<Category> _filtered  = new();
+    private List<Category> _paginated = new();
+
+    private int _pageIndex  = 1;
+    private const int _pageSize = 10;
+    private int _totalPages = 1;
+
+    private Category?      _selected;
+    private CategoryFormVM _form = new();
+
+    private CancellationTokenSource _cts = new();
+
+    private static readonly string[] _avatarColors =
+    [
+        "#3d5166", "#5b6abf", "#0f766e", "#b45309",
+        "#7c3aed", "#0369a1", "#be185d", "#15803d"
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _all = await categoryRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            await LogErrorAsync(ex);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error al cargar las categorías.", NotificationTypeForJs.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        string q = _searchText.Trim().ToLowerInvariant();
+
+        _filtered = string.IsNullOrEmpty(q)
+            ? _all
+            : _all.Where(c =>
+                c.Name.ToLowerInvariant().Contains(q) ||
+                c.Description.ToLowerInvariant().Contains(q)).ToList();
+
+        _totalPages = Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)_pageSize));
+        if (_pageIndex > _totalPages) _pageIndex = _totalPages;
+
+        _paginated = _filtered
+            .Skip((_pageIndex - 1) * _pageSize)
+            .Take(_pageSize)
+            .ToList();
+    }
+
+    private async void OnSearchInput(ChangeEventArgs e)
+    {
+        _cts.Cancel();
+        _cts = new();
+        try
+        {
+            await Task.Delay(250, _cts.Token);
+            _searchText = e.Value?.ToString() ?? "";
+            _pageIndex  = 1;
+            ApplyFilter();
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+        catch (Exception) { }
+        finally { await InvokeAsync(StateHasChanged); }
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _pageIndex) return;
+        _pageIndex = page;
+        ApplyFilter();
+    }
+
+    private void OpenNewModal()
+    {
+        _editingId      = null;
+        _selected       = null;
+        _form           = new CategoryFormVM { Active = true };
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+    }
+
+    private void OpenEditModal(Category cat)
+    {
+        _editingId  = cat.CategoryId;
+        _selected   = cat;
+        _form = new CategoryFormVM
+        {
+            Name        = cat.Name,
+            Description = cat.Description,
+            Active      = cat.Active,
+        };
+        _modalError     = "";
+        _showValidation = false;
+        _showModal      = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal  = false;
+        _modalError = "";
+    }
+
+    private async Task SaveAsync()
+    {
+        _showValidation = true;
+        _modalError     = "";
+
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _modalError = "El nombre es obligatorio.";
+            return;
+        }
+
+        string nameTrimmed = _form.Name.Trim();
+
+        bool duplicate = _editingId == null
+            ? _all.Any(c => c.Name.Equals(nameTrimmed, StringComparison.OrdinalIgnoreCase))
+            : _all.Any(c => c.CategoryId != _editingId &&
+                            c.Name.Equals(nameTrimmed, StringComparison.OrdinalIgnoreCase));
+        if (duplicate)
+        {
+            _modalError = "Ya existe una categoría con ese nombre.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            if (_editingId == null)
+            {
+                var nueva = new Category
+                {
+                    StoreId     = posSessionService.StoreId,
+                    Name        = nameTrimmed,
+                    Description = _form.Description.Trim(),
+                    Active      = _form.Active,
+                };
+                await categoryRepository.AddAsync(nueva);
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Categoría creada correctamente.", "success");
+            }
+            else
+            {
+                _selected!.Name        = nameTrimmed;
+                _selected.Description  = _form.Description.Trim();
+                _selected.Active       = _form.Active;
+                await categoryRepository.UpdateAsync(_selected);
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Éxito", "Categoría actualizada correctamente.", "success");
+            }
+
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            await LogErrorAsync(ex);
+            _modalError = "Ocurrió un error al guardar. Intenta nuevamente.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ShowDeleteModal(Category cat)
+    {
+        _selected        = cat;
+        _showDeleteModal = true;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        _showDeleteModal = false;
+        if (_selected == null) return;
+        try
+        {
+            await categoryRepository.DeleteOneByCategoryIdAsync(_selected.CategoryId);
+            _selected = null;
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Éxito", "Categoría eliminada correctamente.", "success");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            await LogErrorAsync(ex);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                "Error", "Hubo un error al eliminar. Intenta nuevamente.", NotificationTypeForJs.Error);
+        }
+    }
+
+    private async Task LogErrorAsync(Exception ex)
+    {
+        await failureRepository.AddAsync(new Failure
+        {
+            Active                   = true,
+            DateTimeCreation         = DateTime.Now,
+            DateTimeLastModification = DateTime.Now,
+            UserCreationId           = 1,
+            UserLastModificationId   = 1,
+            EmergencyLevel           = 1,
+            Comment                  = "",
+            Message                  = ex.Message,
+            Source                   = ex.Source ?? "",
+            StackTrace               = ex.StackTrace ?? ""
+        });
+    }
+
+    private static string GetAvatarColor(long id) =>
+        _avatarColors[id % _avatarColors.Length];
+
+    private class CategoryFormVM
+    {
+        public string Name        { get; set; } = "";
+        public string Description { get; set; } = "";
+        public bool   Active      { get; set; } = true;
+    }
+}

@@ -1,0 +1,123 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
+@using FiyiPOS.Services.FiyiPOS
+
+@inject CashCutRepository cashCutRepository
+@inject PosSessionService  posSessionService
+@inject IJSRuntime          IJSRuntime
+
+@if (_loading)
+{
+    <div style="display:flex;justify-content:center;align-items:center;padding:40px 0;">
+        <i class="fas fa-spinner fa-spin" style="font-size:1.6rem;color:#1aacb1;"></i>
+    </div>
+}
+else if (_cuts.Count == 0)
+{
+    <div style="text-align:center;padding:40px 16px;color:#94a3b8;">
+        <i class="fas fa-inbox" style="font-size:2rem;margin-bottom:8px;display:block;"></i>
+        No hay cortes registrados aún.
+    </div>
+}
+else
+{
+    @foreach (var cut in _cuts)
+    {
+        string diffColor  = cut.Difference < 0 ? "#dc2626" : cut.Difference > 0 ? "#d97706" : "#059669";
+        string diffSign   = cut.Difference > 0 ? "+" : "";
+        string diffIcon   = cut.Difference < 0 ? "fa-arrow-down" : cut.Difference > 0 ? "fa-arrow-up" : "fa-check";
+
+        <div style="background:#fff;border-radius:12px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;">
+
+            <!-- Fila superior: fecha + ventas -->
+            <div style="background:#0f172a;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+                <span style="color:#e2e8f0;font-size:.82rem;font-weight:600;">
+                    <i class="fas fa-calendar-alt me-1" style="color:#1aacb1;"></i>
+                    @(cut.ClosedAt?.ToString("dd/MM/yyyy HH:mm") ?? "—")
+                </span>
+                <span style="background:#1e293b;color:#94a3b8;font-size:.75rem;padding:3px 8px;border-radius:99px;">
+                    @cut.TotalSales venta@(cut.TotalSales != 1 ? "s" : "")
+                </span>
+            </div>
+
+            <!-- Cuerpo: importes -->
+            <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                    <div style="font-size:.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;">Esperado</div>
+                    <div style="font-size:.95rem;font-weight:700;color:#0f172a;">$@cut.ExpectedAmount.ToString("N2")</div>
+                </div>
+                <div>
+                    <div style="font-size:.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;">Contado</div>
+                    <div style="font-size:.95rem;font-weight:700;color:#0f172a;">$@cut.ActualAmount.ToString("N2")</div>
+                </div>
+                <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;border-top:1px solid #f1f5f9;padding-top:8px;margin-top:2px;">
+                    <i class="fas @diffIcon" style="color:@diffColor;font-size:.8rem;"></i>
+                    <span style="font-size:.82rem;font-weight:600;color:@diffColor;">
+                        Diferencia: @diffSign$@Math.Abs(cut.Difference).ToString("N2")
+                    </span>
+                    @if (!string.IsNullOrWhiteSpace(cut.Notes))
+                    {
+                        <span style="margin-left:auto;font-size:.7rem;color:#94a3b8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@cut.Notes">
+                            <i class="fas fa-sticky-note me-1"></i>@cut.Notes
+                        </span>
+                    }
+                </div>
+            </div>
+
+            <!-- Botón descarga -->
+            <div style="padding:0 14px 12px;">
+                <button @onclick="() => DownloadAsync(cut)"
+                        disabled="@(_loadingId == cut.CashCutId)"
+                        style="width:100%;background:#0f172a;color:#e2e8f0;border:none;border-radius:8px;padding:9px;font-size:.82rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <i class="fas @(_loadingId == cut.CashCutId ? "fa-spinner fa-spin" : "fa-file-pdf")" style="color:#1aacb1;"></i>
+                    @(_loadingId == cut.CashCutId ? "Generando..." : "Descargar informe")
+                </button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<CashCut> _cuts     = [];
+    private bool          _loading  = true;
+    private long          _loadingId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cuts   = await cashCutRepository.GetAllByStoreIdAsync(posSessionService.StoreId, 20);
+        _loading = false;
+    }
+
+    private async Task DownloadAsync(CashCut cut)
+    {
+        _loadingId = cut.CashCutId;
+        StateHasChanged();
+        try
+        {
+            var report = await cashCutRepository.GetReportDataAsync(cut.CashCutId, posSessionService.StoreName);
+            string html = CashCutReportBuilder.BuildHtml(report);
+            await IJSRuntime.InvokeVoidAsync("reportHelper.openAndPrint", html);
+        }
+        catch (Exception ex)
+        {
+            await failureRepository.AddAsync(new()
+            {
+                Active                   = true,
+                DateTimeCreation         = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId           = 1,
+                UserLastModificationId   = 1,
+                EmergencyLevel           = 1,
+                Comment                  = "",
+                Message                  = ex.Message,
+                Source                   = ex.Source    ?? "",
+                StackTrace               = ex.StackTrace ?? "",
+            });
+        }
+        finally
+        {
+            _loadingId = 0;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,218 @@
+@using FiyiPOS.Areas.FiyiPOS.Common.InvoiceBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.InvoiceBack.DTOs
+@using FiyiPOS.Services.FiyiPOS
+
+@inject InvoiceRepository invoiceRepository
+@inject PosSessionService posSessionService
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div class="header-title">FACTURAS</div>
+    <div class="header-sub">Consultá el historial de comprobantes emitidos y su estado ante AFIP.</div>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-row">
+    <div class="stat-card c-primary">
+        <div class="stat-label">Total comprobantes</div>
+        <div class="stat-value">@_invoices.Count</div>
+    </div>
+    <div class="stat-card c-success">
+        <div class="stat-label">Monto total facturado</div>
+        <div class="stat-value">$@_invoices.Sum(i => i.Total).ToString("N2")</div>
+    </div>
+    <div class="stat-card c-warning">
+        <div class="stat-label">Autorizadas (con CAE)</div>
+        <div class="stat-value">@_invoices.Count(i => !string.IsNullOrEmpty(i.CAE))</div>
+    </div>
+    <div class="stat-card c-danger">
+        <div class="stat-label">Hoy</div>
+        <div class="stat-value">@_invoices.Count(i => i.InvoiceDate.Date == DateTime.Today)</div>
+    </div>
+</div>
+
+<!-- ── TOOLBAR ── -->
+<div class="toolbar">
+    <div class="search-bar">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Filtrar por comprobante, ticket o cliente..." @bind="_filter"
+               @bind:event="oninput" />
+    </div>
+</div>
+
+<!-- ── GRILLA ── -->
+<div class="list-container">
+    @if (_loading)
+    {
+        <div class="empty-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Cargando facturas...</p>
+        </div>
+    }
+    else if (!_filtered.Any())
+    {
+        <div class="empty-state">
+            <i class="fas fa-file-invoice-dollar"></i>
+            <p>@(_filter.Length > 0 ? "Sin resultados" : "Sin facturas emitidas")</p>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Comprobante</th>
+                    <th>Fecha</th>
+                    <th>Ticket</th>
+                    <th>Cliente</th>
+                    <th>Neto</th>
+                    <th>IVA</th>
+                    <th>Total</th>
+                    <th>CAE</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in _filtered)
+                {
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <div class="avatar" style="background:#2563eb;">
+                                    <i class="fas fa-file-invoice-dollar" style="font-size:.7rem;"></i>
+                                </div>
+                                <div>
+                                    <div class="fs-6" style="font-weight:600;">
+                                        @TipoComprobanteLabel(i.TipoComprobante)
+                                    </div>
+                                    <div class="fs-6" style="color:var(--text-muted);">
+                                        @FormatComprobante(i)
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="fs-6">@i.InvoiceDate.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="fs-6">@(string.IsNullOrWhiteSpace(i.TicketNumber) ? "—" : i.TicketNumber)</td>
+                        <td class="fs-6">@(string.IsNullOrWhiteSpace(i.ClientName) ? "Consumidor Final" : i.ClientName)</td>
+                        <td class="fs-6">$@i.Subtotal.ToString("N2")</td>
+                        <td class="fs-6">$@i.TaxAmount.ToString("N2")</td>
+                        <td class="fs-6"><strong>$@i.Total.ToString("N2")</strong></td>
+                        <td class="fs-6">
+                            @if (!string.IsNullOrEmpty(i.CAE))
+                            {
+                                <div style="font-weight:600;">@i.CAE</div>
+                                @if (i.CAEFechaVencimiento.HasValue)
+                                {
+                                    <div class="fs-6" style="color:var(--text-muted);">
+                                        Vto: @i.CAEFechaVencimiento.Value.ToString("dd/MM/yyyy")
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <span style="color:var(--text-muted);">—</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="badge @StatusBadgeClass(i)">@StatusLabel(i)</span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+
+    private bool _loading = true;
+    private string _filter = "";
+
+    private List<InvoiceListItemDTO> _invoices = new();
+
+    private IEnumerable<InvoiceListItemDTO> _filtered =>
+        string.IsNullOrWhiteSpace(_filter)
+            ? _invoices
+            : _invoices.Where(i =>
+                FormatComprobante(i).Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+                (i.TicketNumber != null && i.TicketNumber.Contains(_filter, StringComparison.OrdinalIgnoreCase)) ||
+                (i.ClientName != null && i.ClientName.Contains(_filter, StringComparison.OrdinalIgnoreCase)) ||
+                (i.CAE != null && i.CAE.Contains(_filter, StringComparison.OrdinalIgnoreCase)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _invoices = await invoiceRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
+        }
+        catch (Exception ex)
+        {
+            Failure failure = new()
+            {
+                Active = true,
+                DateTimeCreation = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId = 1,
+                UserLastModificationId = 1,
+                EmergencyLevel = 1,
+                Comment = "",
+                Message = ex.Message,
+                Source = ex.Source ?? "",
+                StackTrace = ex.StackTrace ?? ""
+            };
+            await failureRepository.AddAsync(failure);
+            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Error", "Hubo un error. Intenta nuevamente",
+"error");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FormatComprobante(InvoiceListItemDTO i)
+    {
+        if (!string.IsNullOrWhiteSpace(i.InvoiceNumber))
+            return i.InvoiceNumber;
+        return $"{i.PuntoVenta:D4}-{i.NumeroComprobante:D8}";
+    }
+
+    private static string TipoComprobanteLabel(int tipo) => tipo switch
+    {
+        1 => "Factura A",
+        2 => "Nota de Débito A",
+        3 => "Nota de Crédito A",
+        6 => "Factura B",
+        7 => "Nota de Débito B",
+        8 => "Nota de Crédito B",
+        11 => "Factura C",
+        12 => "Nota de Débito C",
+        13 => "Nota de Crédito C",
+        _ => $"Comprobante {tipo}",
+    };
+
+    private static string StatusLabel(InvoiceListItemDTO i)
+    {
+        if (!string.IsNullOrEmpty(i.CAE))
+            return "Autorizada";
+        if (i.AfipResultado == "R")
+            return "Rechazada";
+        if (string.Equals(i.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            return "Anulada";
+        return "Pendiente";
+    }
+
+    private static string StatusBadgeClass(InvoiceListItemDTO i)
+    {
+        if (!string.IsNullOrEmpty(i.CAE)) return "badge-success";
+        if (i.AfipResultado == "R") return "badge-danger";
+        if (string.Equals(i.Status, "cancelled", StringComparison.OrdinalIgnoreCase)) return "badge-muted";
+        return "badge-warning";
+    }
+}
