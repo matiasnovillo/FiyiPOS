@@ -118,7 +118,7 @@
                     <th>Producto</th>
                     <th>Categoría</th>
                     <th>Precio venta</th>
-                    <th>Ganancia</th>
+                    <th>Precio costo</th>
                     <th>Stock</th>
                     <th>Estado</th>
                     <th>Acciones</th>
@@ -153,9 +153,7 @@
                         </td>
                         <td class="fs-6">@GetCategoryName(p.CategoryId)</td>
                         <td class="fs-6">$@p.SalePrice.ToString("N2")</td>
-                        <td class="fs-6" style="font-weight:600;color:@(GetProfit(p) > 0 ? "var(--pos-success)" : GetProfit(p) < 0 ? "var(--pos-danger)" : "inherit");">
-                            $@GetProfit(p).ToString("N2")
-                        </td>
+                        <td class="fs-6">$@p.CostPrice.ToString("N2")</td>
                         <td>
                             @if (p.Stock <= p.MinStock)
                             {
@@ -181,11 +179,6 @@
                         <td class="actions-cell">
                             <button class="abtn abtn-primary" @onclick="() => OpenEditModal(p)">
                                 <i class="fas fa-edit"></i> Editar
-                            </button>
-                            <button class="abtn @(p.Active ? "abtn-danger" : "abtn-success")"
-                                    @onclick="() => ToggleProductActive(p)">
-                                <i class="fas @(p.Active ? "fa-toggle-off" : "fa-toggle-on")"></i>
-                                @(p.Active ? "Desactivar" : "Activar")
                             </button>
                             <button class="abtn abtn-danger" @onclick="() => ShowDeleteModal(p)">
                                 <i class="fas fa-trash-alt"></i> Eliminar
@@ -741,22 +734,11 @@
         await LoadPage();
     }
 
-    private async Task ToggleProductActive(Product p)
-    {
-        p.Active = !p.Active;
-        await productRepository.UpdateAsync(p);
-        await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",
-            "Éxito", p.Active ? "Producto activado." : "Producto desactivado.", "success");
-        await LoadProductos();
-    }
-
     private string GetCategoryName(long? categoryId)
     {
         if (categoryId == null) return "—";
         return _categories.FirstOrDefault(c => c.CategoryId == categoryId)?.Name ?? "—";
     }
-
-    private static decimal GetProfit(Product p) => p.SalePrice - p.CostPrice;
 
     private void OpenNewModal()
     {
