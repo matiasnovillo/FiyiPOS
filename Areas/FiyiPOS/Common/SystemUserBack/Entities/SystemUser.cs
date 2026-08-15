@@ -37,5 +37,8 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Entities
         public DateTime CreatedAt { get; set; }
 
         public string? ActivationToken { get; set; }
+
+        public string?   PasswordResetToken           { get; set; }
+        public DateTime? PasswordResetTokenExpiresAt   { get; set; }
     }
 }

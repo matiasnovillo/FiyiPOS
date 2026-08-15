@@ -48,6 +48,14 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.EntitiesConfiguration
             entity.Property(e => e.ActivationToken)
                 .HasColumnType("varchar(50)")
                 .IsRequired(false);
+
+            entity.Property(e => e.PasswordResetToken)
+                .HasColumnType("varchar(50)")
+                .IsRequired(false);
+
+            entity.Property(e => e.PasswordResetTokenExpiresAt)
+                .HasColumnType("datetime")
+                .IsRequired(false);
         }
     }
 }

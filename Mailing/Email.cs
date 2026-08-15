@@ -29,6 +29,15 @@ namespace FiyiPOS.Mailing
             await SendAsync(toEmail, fullName, "Activá tu cuenta en FiyiPOS", body);
         }
 
+        public async Task SendPasswordResetEmailAsync(string toEmail, string fullName, string resetUrl)
+        {
+            string body = BuildBody("reset-password.html",
+                ("{*1*}", $"Hola, {fullName}"),
+                ("{*2*}", resetUrl));
+
+            await SendAsync(toEmail, fullName, "Restablecé tu contraseña de FiyiPOS", body);
+        }
+
         public async Task SendLowStockAlertAsync(
             string toEmail,
             string toName,

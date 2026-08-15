@@ -138,6 +138,14 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
                 .ExecuteDeleteAsync();
         }
 
+        public async Task<SystemUser?> GetOneByUsernameAsync(string username)
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+            return await DbContext.SystemUser
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Username == username);
+        }
+
         public async Task<bool> ExistsByUsernameAsync(string username)
         {
             await using var DbContext = await _factory.CreateDbContextAsync();
@@ -178,6 +186,44 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
             await DbContext.SystemUser
                 .Where(u => u.SystemUserId == systemUserId)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.Active, !current));
+        }
+
+        public async Task SetPasswordResetTokenAsync(long systemUserId, string token, DateTime expiresAt)
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+            await DbContext.SystemUser
+                .Where(x => x.SystemUserId == systemUserId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.PasswordResetToken,         token)
+                    .SetProperty(u => u.PasswordResetTokenExpiresAt, expiresAt));
+        }
+
+        public async Task<SystemUser?> GetOneByPasswordResetTokenAsync(string token)
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+            return await DbContext.SystemUser
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.PasswordResetToken == token);
+        }
+
+        public async Task<bool> ResetPasswordByTokenAsync(string token, string newPasswordHash)
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+
+            SystemUser? user = await DbContext.SystemUser
+                .FirstOrDefaultAsync(x => x.PasswordResetToken == token);
+
+            if (user == null || user.PasswordResetTokenExpiresAt == null ||
+                user.PasswordResetTokenExpiresAt < DateTime.Now)
+            {
+                return false;
+            }
+
+            user.PasswordHash                 = newPasswordHash;
+            user.PasswordResetToken            = null;
+            user.PasswordResetTokenExpiresAt   = null;
+            await DbContext.SaveChangesAsync();
+            return true;
         }
     }
 }

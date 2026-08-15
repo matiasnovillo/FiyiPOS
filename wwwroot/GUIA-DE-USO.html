@@ -572,6 +572,18 @@ tr:nth-child(even) td { background: #fafafa; }
       <div class="step"><div class="step-num">3</div><div class="step-body">Si tu cuenta tiene acceso a más de una sucursal, el sistema te pedirá que elijas cuál usar.</div></div>
     </div>
 
+    <h3>¿Olvidaste tu contraseña?</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body">En la pantalla de login, hacé clic en <strong>"¿Olvidaste tu contraseña?"</strong>.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body">Ingresá el email con el que te registraste y confirmá. Por seguridad, el sistema muestra el mismo mensaje exista o no esa cuenta.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body">Si el email está registrado, llega un correo con un enlace para restablecer la contraseña, válido por <strong>1 hora</strong> y de un solo uso.</div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body">Al abrir el enlace, ingresá la nueva contraseña dos veces y confirmá. El sistema vuelve a la pantalla de login para iniciar sesión con la nueva contraseña.</div></div>
+    </div>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <div>El envío de correos (activación de cuenta, recuperación de contraseña, alertas) requiere configurar el SMTP en <strong>Configuración → SMTP</strong>. Mientras <code>smtp_test_mode</code> esté activo, los correos no se envían: quedan guardados como archivo HTML en <code>wwwroot/email-debug/</code> para revisarlos en desarrollo.</div>
+    </div>
+
     <h3>Roles del sistema</h3>
     <div class="role-cards">
       <div class="role-card cajero">

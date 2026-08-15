@@ -4,6 +4,8 @@ namespace FiyiPOS.Mailing
     {
         Task SendSignUpEmailAsync(string toEmail, string fullName, string activationUrl);
 
+        Task SendPasswordResetEmailAsync(string toEmail, string fullName, string resetUrl);
+
         Task SendLowStockAlertAsync(
             string toEmail,
             string toName,

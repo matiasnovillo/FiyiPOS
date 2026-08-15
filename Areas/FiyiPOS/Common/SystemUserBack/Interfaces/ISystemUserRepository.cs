@@ -25,5 +25,13 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Interfaces
         Task<int> UpdateAsync(SystemUser systemUser);
         Task<int> DeleteOneBySystemUserIdAsync(long systemUserId);
         Task ToggleActiveAsync(long systemUserId);
+
+        Task<SystemUser?> GetOneByUsernameAsync(string username);
+        Task<SystemUser?> GetOneByActivationTokenAsync(string token);
+        Task ActivateByTokenAsync(string token);
+
+        Task SetPasswordResetTokenAsync(long systemUserId, string token, DateTime expiresAt);
+        Task<SystemUser?> GetOneByPasswordResetTokenAsync(string token);
+        Task<bool> ResetPasswordByTokenAsync(string token, string newPasswordHash);
     }
 }

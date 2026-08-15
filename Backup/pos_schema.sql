@@ -84,15 +84,17 @@ CREATE TABLE Supplier (
 --    El rol define qué puede ver o hacer cada usuario.
 -- ────────────────────────────────────────────────────────────────────
 CREATE TABLE SystemUser (
-    SystemUserId    BIGINT        IDENTITY(1,1) PRIMARY KEY,
-    Name            VARCHAR(100)  NOT NULL,   -- Nombre completo del operador
-    Username        VARCHAR(200)  NOT NULL UNIQUE,
-    PasswordHash    VARCHAR(255)  NOT NULL,   -- Hash de la contraseña (nunca texto plano)
-    Role            VARCHAR(20)   NOT NULL DEFAULT 'cashier',
-                                              -- 'admin' | 'cashier' | 'supervisor'
-    Active          TINYINT       NOT NULL DEFAULT 1,
-    CreatedAt       DATETIME      NOT NULL DEFAULT GETDATE(),
-    ActivationToken VARCHAR(50)   NULL
+    SystemUserId                BIGINT        IDENTITY(1,1) PRIMARY KEY,
+    Name                        VARCHAR(100)  NOT NULL,   -- Nombre completo del operador
+    Username                    VARCHAR(200)  NOT NULL UNIQUE,
+    PasswordHash                VARCHAR(255)  NOT NULL,   -- Hash de la contraseña (nunca texto plano)
+    Role                        VARCHAR(20)   NOT NULL DEFAULT 'cashier',
+                                                          -- 'admin' | 'cashier' | 'supervisor'
+    Active                      TINYINT       NOT NULL DEFAULT 1,
+    CreatedAt                   DATETIME      NOT NULL DEFAULT GETDATE(),
+    ActivationToken             VARCHAR(50)   NULL,
+    PasswordResetToken          VARCHAR(50)   NULL,       -- Token de un solo uso para /restablecer-password
+    PasswordResetTokenExpiresAt DATETIME      NULL        -- Expira 1 hora después de solicitarse
 );
 
 -- ────────────────────────────────────────────────────────────────────
@@ -550,6 +552,10 @@ INSERT INTO Config ([Key], Value, Description) VALUES
 -- Agregado para el flujo de registro público:
 -- ALTER TABLE SystemUser ADD ActivationToken VARCHAR(50) NULL;
 -- ALTER TABLE SystemUser ALTER COLUMN Username VARCHAR(200) NOT NULL;
+
+-- Agregado para el flujo de "Olvidé mi contraseña" (2026-08-14):
+-- ALTER TABLE SystemUser ADD PasswordResetToken VARCHAR(50) NULL;
+-- ALTER TABLE SystemUser ADD PasswordResetTokenExpiresAt DATETIME NULL;
 
 -- Eliminación de SystemUser.StoreId (reemplazado por SystemUserStore N:M):
 -- DECLARE @sql NVARCHAR(500)

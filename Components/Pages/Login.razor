@@ -70,6 +70,11 @@
                                            @bind="_password"
                                            @onkeydown="OnPasswordKeyDown" />
                                 </div>
+                                <div class="text-end mb-2">
+                                    <NavLink href="/olvide-password" class="text-primary text-gradient fw-bold fs-6">
+                                        ¿Olvidaste tu contraseña?
+                                    </NavLink>
+                                </div>
                                 <div class="container text-center">
                                     <button id="btn-login" type="button" @onclick="Submit"
                                             class="btn btn-primary mt-3 fs-6" disabled="@_isSubmitting">
