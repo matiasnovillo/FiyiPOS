@@ -26,6 +26,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.DTOs
         public List<CreditLine>          Credits            { get; set; } = new();
         public List<ProductCategoryGroup> ProductsByCategory { get; set; } = new();
         public List<PurchaseLine>        Purchases          { get; set; } = new();
+        public List<InternalConsumptionGroup> InternalConsumptionByOperator { get; set; } = new();
 
         public record PurchaseLine(string SupplierName, string? Invoice, DateTime Date, int ItemCount, decimal Subtotal, decimal TaxAmount, decimal Total, bool IsConfirmed);
         public record PaymentLine(string MethodName, bool IsCash, int Count, decimal Total);
@@ -36,5 +37,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.DTOs
         public record ProductSoldLine(string ProductName, decimal TotalQty, decimal TotalSubtotal);
         public record PaymentMethodBreakdown(string MethodName, decimal Subtotal);
         public record ProductCategoryGroup(string CategoryName, List<ProductSoldLine> Lines, List<PaymentMethodBreakdown> PaymentBreakdown);
+        public record ConsumptionLine(DateTime Date, string Reason, string ProductName, decimal Quantity, decimal Subtotal);
+        public record InternalConsumptionGroup(string OperatorName, List<ConsumptionLine> Lines, decimal TotalCost);
     }
 }

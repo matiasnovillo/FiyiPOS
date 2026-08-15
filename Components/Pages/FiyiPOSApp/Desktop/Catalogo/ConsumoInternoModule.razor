@@ -179,7 +179,7 @@
                         </div>
                     }
 
-                    <div class="panel-section" style="margin-top:.8rem;">Motivo del consumo</div>
+                    <div class="panel-section" style="margin-top:.8rem;">Motivo del consumo (opcional)</div>
 
                     <div class="field" style="margin-bottom:.6rem;">
                         <input type="text" @bind="_reason" @bind:event="oninput"
@@ -205,7 +205,7 @@
                     <i class="fas fa-times"></i> Cancelar
                 </button>
                 <button class="abtn abtn-success" @onclick="ConfirmConsumptionAsync"
-                        disabled="@(_saving || _lines.Count == 0 || string.IsNullOrWhiteSpace(_reason))">
+                        disabled="@(_saving || _lines.Count == 0)">
                     <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
                     @(_saving ? "Procesando..." : "Confirmar consumo")
                 </button>
@@ -427,7 +427,7 @@
 
     private async Task ConfirmConsumptionAsync()
     {
-        if (_lines.Count == 0 || string.IsNullOrWhiteSpace(_reason)) return;
+        if (_lines.Count == 0) return;
 
         _saving = true;
         try

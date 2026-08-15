@@ -43,7 +43,7 @@ namespace FiyiPOS.Services.FiyiPOS
             {
                 "ventas", "creditos", "movimientos", "clientes",
                 "inventario", "facturas", "devoluciones", "consumointerno",
-                "dashboard", "comida"
+                "corte", "dashboard", "comida"
             },
             ["supervisor"] = new()
             {

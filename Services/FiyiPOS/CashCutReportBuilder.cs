@@ -188,6 +188,28 @@ td{padding:5px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
                 sb.Append("</tbody></table>");
             }
 
+            if (r.InternalConsumptionByOperator.Any())
+            {
+                int     totalLines = r.InternalConsumptionByOperator.Sum(g => g.Lines.Count);
+                decimal grandTotal = r.InternalConsumptionByOperator.Sum(g => g.TotalCost);
+                sb.Append($"<h2>Consumo interno ({totalLines} registro{(totalLines != 1 ? "s" : "")} en {r.InternalConsumptionByOperator.Count} operador{(r.InternalConsumptionByOperator.Count != 1 ? "es" : "")})</h2>");
+
+                foreach (var group in r.InternalConsumptionByOperator)
+                {
+                    sb.Append("<div style='font-size:11px;font-weight:700;color:#1565c0;background:#eff6ff;padding:5px 10px;border-left:3px solid #1565c0;margin-bottom:2px;margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;'>");
+                    sb.Append($"<span>{Esc(group.OperatorName)}</span>");
+                    sb.Append($"<span style='font-size:10px;font-weight:500;background:#fff;border:1px solid #93c5fd;border-radius:3px;padding:1px 6px;color:#1e40af;'>Total: {M(group.TotalCost)}</span>");
+                    sb.Append("</div>");
+                    sb.Append("<table><thead><tr><th>Fecha y hora</th><th>Producto</th><th class='r'>Cantidad</th><th>Motivo</th><th class='r'>Costo</th></tr></thead><tbody>");
+                    foreach (var line in group.Lines)
+                        sb.Append($"<tr><td>{line.Date:dd/MM/yyyy HH:mm}</td><td>{Esc(line.ProductName)}</td><td class='r'>{line.Quantity:N2}</td><td>{Esc(line.Reason)}</td><td class='r'>{M(line.Subtotal)}</td></tr>");
+                    sb.Append($"<tr class='tr-last'><td colspan='4'><em>Subtotal {Esc(group.OperatorName)}</em></td><td class='r'>{M(group.TotalCost)}</td></tr>");
+                    sb.Append("</tbody></table>");
+                }
+
+                sb.Append($"<div style='text-align:right;font-size:12px;font-weight:700;padding:6px 10px;border-top:2px solid #1565c0;margin-top:4px'>Total general de consumo interno: {M(grandTotal)}</div>");
+            }
+
             sb.Append($"<div class='footer'>FiyiPOS &nbsp;·&nbsp; Informe generado el {r.GeneratedAt:dd/MM/yyyy} a las {r.GeneratedAt:HH:mm}</div>");
             sb.Append("<div class='no-print' style='margin-top:20px'><button class='btn-p' onclick='window.print()'>&#128438; Imprimir / Guardar PDF</button></div>");
             sb.Append("</body></html>");

@@ -366,6 +366,36 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
                 p.IsConfirmed
             )).ToList();
 
+            // Consumo interno en el período, agrupado por operador
+            var consumptionRaw = await (
+                from ic  in db.InternalConsumption
+                join icd in db.InternalConsumptionDetail on ic.InternalConsumptionId equals icd.InternalConsumptionId
+                join u   in db.SystemUser on ic.SystemUserId equals u.SystemUserId
+                where ic.StoreId == cut.StoreId
+                      && ic.ConsumptionDate >= periodFrom
+                      && ic.ConsumptionDate <= periodTo
+                select new
+                {
+                    OperatorName = u.Name,
+                    ic.ConsumptionDate,
+                    ic.Reason,
+                    icd.ProductNameSnapshot,
+                    icd.Quantity,
+                    icd.Subtotal,
+                }
+            ).ToListAsync();
+
+            var internalConsumptionByOperator = consumptionRaw
+                .GroupBy(x => x.OperatorName)
+                .OrderByDescending(g => g.Sum(x => x.Subtotal))
+                .Select(g => new InternalConsumptionGroup(
+                    g.Key,
+                    g.OrderBy(x => x.ConsumptionDate)
+                     .Select(x => new ConsumptionLine(x.ConsumptionDate, x.Reason, x.ProductNameSnapshot, x.Quantity, x.Subtotal))
+                     .ToList(),
+                    g.Sum(x => x.Subtotal)))
+                .ToList();
+
             return new CashCutReportDTO
             {
                 StoreName          = storeName,
@@ -390,6 +420,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
                 Credits            = credits,
                 ProductsByCategory = productsByCategory,
                 Purchases          = purchases,
+                InternalConsumptionByOperator = internalConsumptionByOperator,
             };
         }
 

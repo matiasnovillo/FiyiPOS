@@ -259,29 +259,32 @@
                                    @bind="_openingAmount" @bind:event="oninput" />
                             <span class="fs-6" style="color:var(--text-muted);">Plata que pusiste en la gaveta al abrir el turno</span>
                         </div>
-                        <div class="field">
-                            <label>Monto esperado en caja</label>
-                            <div style="padding:.4rem .6rem;background:var(--surface-2,#f3f4f6);border-radius:6px;font-weight:600;">
-                                $@_expectedAmount.ToString("N2")
-                                <span class="fs-6" style="color:var(--text-muted);font-weight:400;">
-                                    = Fondo + efectivo ($@_cashSalesTotal.ToString("N2"))
-                                    @if (_preview?.TotalCashIn > 0)
-                                    {
-                                        <span> + entradas ($@_preview!.TotalCashIn.ToString("N2"))</span>
-                                    }
-                                    @if (_preview?.TotalCashOut > 0)
-                                    {
-                                        <span> − salidas ($@_preview!.TotalCashOut.ToString("N2"))</span>
-                                    }
-                                </span>
-                            </div>
-                        </div>
-                        @if (_expectedAmount < 0)
+                        @if (posSessionService.Role != "cashier")
                         {
-                            <div class="dialog-error" style="margin-top:-.25rem;">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                El monto esperado es negativo. Esto indica que se registraron más salidas que entradas de efectivo en el período. Verificá que los pagos de compras o retiros hayan sido registrados con el método de pago correcto.
+                            <div class="field">
+                                <label>Monto esperado en caja</label>
+                                <div style="padding:.4rem .6rem;background:var(--surface-2,#f3f4f6);border-radius:6px;font-weight:600;">
+                                    $@_expectedAmount.ToString("N2")
+                                    <span class="fs-6" style="color:var(--text-muted);font-weight:400;">
+                                        = Fondo + efectivo ($@_cashSalesTotal.ToString("N2"))
+                                        @if (_preview?.TotalCashIn > 0)
+                                        {
+                                            <span> + entradas ($@_preview!.TotalCashIn.ToString("N2"))</span>
+                                        }
+                                        @if (_preview?.TotalCashOut > 0)
+                                        {
+                                            <span> − salidas ($@_preview!.TotalCashOut.ToString("N2"))</span>
+                                        }
+                                    </span>
+                                </div>
                             </div>
+                            @if (_expectedAmount < 0)
+                            {
+                                <div class="dialog-error" style="margin-top:-.25rem;">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    El monto esperado es negativo. Esto indica que se registraron más salidas que entradas de efectivo en el período. Verificá que los pagos de compras o retiros hayan sido registrados con el método de pago correcto.
+                                </div>
+                            }
                         }
                         <div class="field">
                             <label>Monto contado físicamente <span class="required-star">*</span></label>
@@ -290,15 +293,18 @@
                                    @bind:after="SyncLeftInDrawer" />
                             <span class="fs-6" style="color:var(--text-muted);">Lo que contaste billete a billete</span>
                         </div>
-                        <div class="field">
-                            <label>Diferencia</label>
-                            <div class="corte-diff-box @(_difference < 0 ? "diff-neg" : _difference > 0 ? "diff-pos" : "diff-ok")">
-                                @(_difference >= 0 ? "+" : "")@_difference.ToString("N2")
-                                @if (_difference == 0) { <span> (cuadra exacto)</span> }
-                                else if (_difference > 0) { <span> (sobrante)</span> }
-                                else { <span> (faltante)</span> }
+                        @if (posSessionService.Role != "cashier")
+                        {
+                            <div class="field">
+                                <label>Diferencia</label>
+                                <div class="corte-diff-box @(_difference < 0 ? "diff-neg" : _difference > 0 ? "diff-pos" : "diff-ok")">
+                                    @(_difference >= 0 ? "+" : "")@_difference.ToString("N2")
+                                    @if (_difference == 0) { <span> (cuadra exacto)</span> }
+                                    else if (_difference > 0) { <span> (sobrante)</span> }
+                                    else { <span> (faltante)</span> }
+                                </div>
                             </div>
-                        </div>
+                        }
                         <div class="field">
                             <label>Monto que dejo en caja</label>
                             <input type="number" min="0" step="0.01"
