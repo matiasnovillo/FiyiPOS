@@ -44,13 +44,15 @@ namespace FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Interfaces
             bool? activeFilter = null,
             bool onlyNoBarcode = false,
             bool onlyNoStock = false,
-            bool onlyOnline = false);
+            bool onlyOnline = false,
+            bool onlyNoCostPrice = false);
 
         Task<int> CountActiveByStoreIdAsync(long storeId);
         Task<int> CountLowStockByStoreIdAsync(long storeId);
         Task<int> CountNoBarcodeByStoreIdAsync(long storeId);
         Task<int> CountNoStockByStoreIdAsync(long storeId);
         Task<int> CountOnlineByStoreIdAsync(long storeId);
+        Task<int> CountNoCostPriceByStoreIdAsync(long storeId);
         Task<List<Product>> GetManyByProductIdsAsync(IEnumerable<long> ids);
         #endregion
 

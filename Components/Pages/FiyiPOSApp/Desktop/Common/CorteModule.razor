@@ -523,7 +523,7 @@
 
     private async Task OpenNewCutModal()
     {
-        _openingAmount         = 0;
+        _openingAmount         = posSessionService.OpeningCashAmount;
         _actualAmount          = 0;
         _amountLeftInDrawer    = 0;
         _leftInDrawerManualSet = false;

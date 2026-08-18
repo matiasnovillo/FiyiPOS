@@ -21,6 +21,7 @@ namespace FiyiPOS.Services.FiyiPOS
         public string      Role             { get; private set; } = "";
         public List<Store> AccessibleStores { get; private set; } = new();
         public DateTime?   BillingDueDate   { get; private set; }
+        public decimal     OpeningCashAmount { get; private set; }
 
         public bool IsAuthenticated  => SystemUserId > 0;
         public bool CanSwitchStore   => AccessibleStores.Count > 1;
@@ -88,6 +89,9 @@ namespace FiyiPOS.Services.FiyiPOS
         public void SetBillingDueDate(DateTime? date)
             => BillingDueDate = date;
 
+        public void SetOpeningCashAmount(decimal amount)
+            => OpeningCashAmount = amount;
+
         public event Action? OnSessionChanged;
         public event Action? OnStoreChanged;
 
@@ -105,9 +109,10 @@ namespace FiyiPOS.Services.FiyiPOS
             StoreName        = "";
             OperatorName     = "";
             Role             = "";
-            AccessibleStores = new();
-            BillingDueDate   = null;
-            ForgotCheckout   = false;
+            AccessibleStores  = new();
+            BillingDueDate    = null;
+            OpeningCashAmount = 0;
+            ForgotCheckout    = false;
         }
     }
 }

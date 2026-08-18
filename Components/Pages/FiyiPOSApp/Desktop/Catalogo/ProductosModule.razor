@@ -92,6 +92,11 @@
         <i class="fas fa-globe"></i> Se venden online
         @if (_totalOnline > 0) { <span>(@_totalOnline)</span> }
     </button>
+    <button class="filter-chip @(_filterNoCostPrice ? "active" : "")"
+            @onclick="ToggleNoCostPriceFilter">
+        <i class="fas fa-dollar-sign"></i> Sin precio de costo
+        @if (_totalNoCostPrice > 0) { <span>(@_totalNoCostPrice)</span> }
+    </button>
 </div>
 
 <!-- ── GRILLA ── -->
@@ -572,6 +577,7 @@
     private bool   _filterNoBarcode = false;
     private bool   _filterNoStock   = false;
     private bool   _filterOnline    = false;
+    private bool   _filterNoCostPrice = false;
     private bool   _showModal       = false;
     private bool   _showDeleteModal = false;
     private bool   _showValidation  = false;
@@ -588,6 +594,7 @@
     private int            _totalNoBarcode   = 0;
     private int            _totalNoStock     = 0;
     private int            _totalOnline      = 0;
+    private int            _totalNoCostPrice = 0;
     private int            _pageIndex        = 1;
     private const int      _pageSize         = 10;
     private int            _totalPages       = 1;
@@ -623,6 +630,7 @@
             _totalNoBarcode = await productRepository.CountNoBarcodeByStoreIdAsync(posSessionService.StoreId);
             _totalNoStock   = await productRepository.CountNoStockByStoreIdAsync(posSessionService.StoreId);
             _totalOnline    = await productRepository.CountOnlineByStoreIdAsync(posSessionService.StoreId);
+            _totalNoCostPrice = await productRepository.CountNoCostPriceByStoreIdAsync(posSessionService.StoreId);
             await LoadPage();
         }
         catch (Exception ex)
@@ -653,7 +661,7 @@
     {
         var result = await productRepository.GetAllPaginatedByStoreIdAsync(
             posSessionService.StoreId, _searchText, _pageIndex, _pageSize, _filterLowStock, _activeFilter,
-            _filterNoBarcode, _filterNoStock, _filterOnline);
+            _filterNoBarcode, _filterNoStock, _filterOnline, _filterNoCostPrice);
 
         _totalRecordsInDb = result.TotalRecordsInDatabase;
         _totalPages       = Math.Max(1, result.TotalPages);
@@ -664,7 +672,7 @@
             _pageIndex = _totalPages;
             result = await productRepository.GetAllPaginatedByStoreIdAsync(
                 posSessionService.StoreId, _searchText, _pageIndex, _pageSize, _filterLowStock, _activeFilter,
-                _filterNoBarcode, _filterNoStock, _filterOnline);
+                _filterNoBarcode, _filterNoStock, _filterOnline, _filterNoCostPrice);
             _pageProducts = result.ListProduct;
         }
     }
@@ -731,6 +739,13 @@
     {
         _filterOnline = !_filterOnline;
         _pageIndex    = 1;
+        await LoadPage();
+    }
+
+    private async Task ToggleNoCostPriceFilter()
+    {
+        _filterNoCostPrice = !_filterNoCostPrice;
+        _pageIndex          = 1;
         await LoadPage();
     }
 

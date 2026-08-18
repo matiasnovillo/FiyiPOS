@@ -27,6 +27,8 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Interfaces
         Task ToggleActiveAsync(long systemUserId);
 
         Task<SystemUser?> GetOneByUsernameAsync(string username);
+        Task<SystemUser?> GetOneByUsernameOrNameAsync(string usernameOrName);
+        Task<bool> ExistsByNameAsync(string name, long? excludeSystemUserId = null);
         Task<SystemUser?> GetOneByActivationTokenAsync(string token);
         Task ActivateByTokenAsync(string token);
 

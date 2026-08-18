@@ -51,10 +51,10 @@
                             <div class="text-start">
                                 <div class="input-group input-group-static mb-3">
                                     <label for="email">
-                                        <i class="fas fa-envelope fa-xl"></i>&nbsp;
-                                        <span class="fs-6">Email</span>
+                                        <i class="fas fa-user fa-xl"></i>&nbsp;
+                                        <span class="fs-6">Email o Nombre de usuario</span>
                                     </label>
-                                    <input type="email"
+                                    <input type="text"
                                            id="email"
                                            class="form-control fs-6"
                                            @bind="_email" />
@@ -69,6 +69,18 @@
                                            class="form-control fs-6"
                                            @bind="_password"
                                            @onkeydown="OnPasswordKeyDown" />
+                                </div>
+                                <div class="input-group input-group-static mb-3">
+                                    <label for="openingCash">
+                                        <i class="fas fa-cash-register fa-xl"></i>&nbsp;
+                                        <span class="fs-6">Fondo inicial de caja</span>
+                                    </label>
+                                    <input type="number"
+                                           id="openingCash"
+                                           min="0"
+                                           step="0.01"
+                                           class="form-control fs-6"
+                                           @bind="_openingCashAmount" />
                                 </div>
                                 <div class="text-end mb-2">
                                     <NavLink href="/olvide-password" class="text-primary text-gradient fw-bold fs-6">
@@ -123,10 +135,11 @@
 
 @code {
 
-    private string _email        = "";
-    private string _password     = "";
-    private string _step         = "credentials";
-    private bool   _isSubmitting = false;
+    private string  _email             = "";
+    private string  _password          = "";
+    private decimal _openingCashAmount = 0;
+    private string  _step              = "credentials";
+    private bool    _isSubmitting      = false;
 
     private SystemUser?  _authenticatedUser;
     private List<Store>  _storeOptions = new();
@@ -145,6 +158,12 @@
             if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
             {
                 await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Información", "Complete todos los datos", NotificationTypeForJs.Information);
+                return;
+            }
+
+            if (_openingCashAmount < 0)
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime", "Información", "El fondo inicial no puede ser negativo", NotificationTypeForJs.Information);
                 return;
             }
 
@@ -177,8 +196,10 @@
                 return;
             }
 
-            if (await systemUserRepository.ExistsByUsernameAsync(_email.Trim().ToLower()) &&
-                !await systemUserRepository.IsActiveByUsernameAsync(_email.Trim().ToLower()))
+            SystemUser? inactiveCandidate = await systemUserRepository
+                .GetOneByUsernameOrNameAsync(_email.Trim().ToLower());
+
+            if (inactiveCandidate != null && !inactiveCandidate.Active)
             {
                 await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
                     "Cuenta sin activar",
@@ -229,6 +250,7 @@
             systemUser.Role);
         posSessionService.SetAccessibleStores(allStores);
         posSessionService.SetBillingDueDate(store.BillingDueDate);
+        posSessionService.SetOpeningCashAmount(_openingCashAmount);
         await cookieService.SetEncryptedPosSystemUserIdCookieAsync(systemUser.SystemUserId.ToString());
 
         bool forgotCheckout = await attendanceRepository.HasUnclosedSessionAsync(systemUser.SystemUserId, store.StoreId);

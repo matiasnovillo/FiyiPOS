@@ -193,7 +193,7 @@
                 <div class="panel-grid">
 
                     <div class="field field-full">
-                        <label>Nombre completo <span class="required-star">*</span></label>
+                        <label>Nombre de usuario <span class="required-star">*</span></label>
                         <input type="text" @bind="_form.Name"
                                class="@(_showValidation && string.IsNullOrWhiteSpace(_form.Name) ? "input-invalid" : "")" />
                     </div>
@@ -464,15 +464,22 @@
             if (_editingId == null)
             {
                 string email = _form.Email.Trim().ToLower();
+                string name  = _form.Name.Trim();
+
                 if (await systemUserRepository.ExistsByUsernameAsync(email))
                 {
                     _modalError = "Ya existe un operador con ese email.";
                     return;
                 }
+                if (await systemUserRepository.ExistsByNameAsync(name))
+                {
+                    _modalError = "Ya existe un operador con ese nombre de usuario.";
+                    return;
+                }
 
                 var nuevo = new SystemUser
                 {
-                    Name         = _form.Name.Trim(),
+                    Name         = name,
                     Username     = email,
                     PasswordHash = FiyiPOS.Library.Security.EncryptString(_form.Password),
                     Role         = _form.Role,
@@ -490,7 +497,14 @@
                 var existing = await systemUserRepository.GetOneBySystemUserIdAsync(_editingId.Value);
                 if (existing == null) return;
 
-                existing.Name   = _form.Name.Trim();
+                string name = _form.Name.Trim();
+                if (await systemUserRepository.ExistsByNameAsync(name, _editingId.Value))
+                {
+                    _modalError = "Ya existe un operador con ese nombre de usuario.";
+                    return;
+                }
+
+                existing.Name   = name;
                 existing.Role   = _form.Role;
                 existing.Active = _form.Active;
                 if (!string.IsNullOrWhiteSpace(_form.Password))

@@ -42,7 +42,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
             await using var DbContext = await _factory.CreateDbContextAsync();
             return await DbContext.SystemUser
                 .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Username == username &&
+                .FirstOrDefaultAsync(x => (x.Username == username || x.Name == username) &&
                                           x.PasswordHash == passwordHash &&
                                           x.Active);
         }
@@ -144,6 +144,22 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
             return await DbContext.SystemUser
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Username == username);
+        }
+
+        public async Task<SystemUser?> GetOneByUsernameOrNameAsync(string usernameOrName)
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+            return await DbContext.SystemUser
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Username == usernameOrName || x.Name == usernameOrName);
+        }
+
+        public async Task<bool> ExistsByNameAsync(string name, long? excludeSystemUserId = null)
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+            return await DbContext.SystemUser
+                .AnyAsync(x => x.Name == name &&
+                               (excludeSystemUserId == null || x.SystemUserId != excludeSystemUserId));
         }
 
         public async Task<bool> ExistsByUsernameAsync(string username)

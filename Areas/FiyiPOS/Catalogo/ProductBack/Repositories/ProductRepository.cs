@@ -140,7 +140,8 @@ namespace FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
             bool? activeFilter = null,
             bool onlyNoBarcode = false,
             bool onlyNoStock = false,
-            bool onlyOnline = false)
+            bool onlyOnline = false,
+            bool onlyNoCostPrice = false)
         {
             await using var DbContext = await _factory.CreateDbContextAsync();
 
@@ -175,6 +176,9 @@ namespace FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
 
             if (onlyOnline)
                 query = query.Where(x => x.IsAvailableToSellOnline);
+
+            if (onlyNoCostPrice)
+                query = query.Where(x => x.CostPrice == 0);
 
             long totalFiltered = await query.LongCountAsync();
             long totalInDb     = await DbContext.Product.LongCountAsync(x => x.StoreId == storeId);
@@ -234,6 +238,14 @@ namespace FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Repositories
             return await DbContext.Product
                 .AsNoTracking()
                 .CountAsync(x => x.StoreId == storeId && x.IsAvailableToSellOnline);
+        }
+
+        public async Task<int> CountNoCostPriceByStoreIdAsync(long storeId)
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+            return await DbContext.Product
+                .AsNoTracking()
+                .CountAsync(x => x.StoreId == storeId && x.CostPrice == 0);
         }
 
         public async Task<List<Product>> GetManyByProductIdsAsync(IEnumerable<long> ids)
