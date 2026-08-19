@@ -12,6 +12,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.EntitiesConfiguration
             entity.Property(e => e.CashMovementId).ValueGeneratedOnAdd();
             entity.Property(e => e.StoreId).HasColumnType("bigint").IsRequired(true);
             entity.Property(e => e.SystemUserId).HasColumnType("bigint").IsRequired(true);
+            entity.Property(e => e.PaymentMethodId).HasColumnType("bigint").IsRequired(true);
             entity.Property(e => e.Type).HasColumnType("varchar(3)").IsRequired(true);
             entity.Property(e => e.Amount).HasColumnType("numeric(18,2)").IsRequired(true);
             entity.Property(e => e.Reason).HasColumnType("varchar(200)").IsRequired(true);

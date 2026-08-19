@@ -161,7 +161,22 @@
                                            @bind:set="val => { if (val > 0) item.Quantity = val; }"
                                            @bind:event="onchange" />
                                 </td>
-                                <td class="col-amount amt-cell fs-6">$@item.Subtotal.ToString("N2")</td>
+                                <td class="col-amount amt-cell fs-6" @onclick:stopPropagation>
+                                    @if (!item.IsCombo && item.AllowFractional)
+                                    {
+                                        <input type="number"
+                                               class="amount-input fs-6"
+                                               min="0.01"
+                                               step="0.01"
+                                               @bind:get="item.Subtotal"
+                                               @bind:set="val => SetAmountForItem(item, val)"
+                                               @bind:event="onchange" />
+                                    }
+                                    else
+                                    {
+                                        @:$@item.Subtotal.ToString("N2")
+                                    }
+                                </td>
                                 <td class="col-stock fs-6" style="color:var(--pos-danger);">
                                     @(item.IsCombo ? "—" : !item.AllowFractional ? ((long)item.Stock).ToString() + "u" : string.IsNullOrEmpty(item.UnitAbbreviation) ? item.Stock.ToString("N2") : item.Stock.ToString("N2") + item.UnitAbbreviation)
                                 </td>
@@ -440,8 +455,8 @@
                             <div class="ventas-pm-grid">
                                 @foreach (var pm in _paymentMethods)
                                 {
-                                    <button class="pm-btn @(!_isCredit && _checkoutPaymentMethodId == pm.PaymentMethodId ? "active" : "")"
-                                            @onclick="() => SelectPaymentMethod(pm)">
+                                    <button class="pm-btn @(IsPaymentLineActive(pm) ? "active" : "")"
+                                            @onclick="() => TogglePaymentLine(pm)">
                                         <i class="fas @GetPaymentIcon(pm.Name)"></i>
                                         <span class="fs-6">@pm.Name</span>
                                     </button>
@@ -489,7 +504,7 @@
                                 }
             else
                                 {
-                                    @if (_isVale)
+                                    @if (_isValeMode)
                                     {
                                         <div class="ventas-field-row">
                                             <label class="fs-6">Nombre del vale</label>
@@ -502,20 +517,33 @@
                                                    @bind="_valeAmount" />
                                         </div>
                                     }
-                                    else
+                                    else if (!_checkoutPayments.Any())
                                     {
                                         <div class="ventas-field-row">
-                                            <label class="fs-6">Recibido</label>
-                                            <input type="number" min="0" step="0.01" class="ventas-amount-input" @bind="_amountPaid" />
+                                            <span class="fs-6">Seleccioná al menos una forma de pago.</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="ventas-payment-lines">
+                                            @foreach (var line in _checkoutPayments)
+                                            {
+                                                <div class="ventas-field-row">
+                                                    <label class="fs-6">@line.MethodName</label>
+                                                    <input type="number" min="0" step="0.01" class="ventas-amount-input"
+                                                           @bind="line.Amount" @bind:event="oninput" />
+                                                    <button type="button" class="ventas-pm-remove" title="Quitar forma de pago"
+                                                            @onclick="() => RemovePaymentLine(line)">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            }
                                         </div>
 
-                                        @if (_isCurrentPaymentCash)
-                                        {
-                                            <div class="ventas-change-row">
-                                                <span class="fs-6">Cambio</span>
-                                                <strong class="ventas-change-val">$@_change.ToString("N2")</strong>
-                                            </div>
-                                        }
+                                        <div class="ventas-change-row">
+                                            <span class="fs-6">@(_remainingToCover > 0 ? "Falta cubrir" : "Cambio")</span>
+                                            <strong class="ventas-change-val">$@((_remainingToCover > 0 ? _remainingToCover : _change).ToString("N2"))</strong>
+                                        </div>
                                     }
                                 }
 
@@ -524,7 +552,9 @@
                                         <i class="fas fa-times"></i> Cancelar
                                     </button>
                                     <button class="abtn abtn-green" @onclick="ConfirmCheckoutAsync"
-                                            disabled="@(_saving || HasStockProblems || (_isCredit && _client?.LimiteCredito > 0 && (_total > _client.LimiteCredito - _clientOpenBalance)))">
+                                            disabled="@(_saving || HasStockProblems ||
+                                                        (_isCredit && _client?.LimiteCredito > 0 && (_total > _client.LimiteCredito - _clientOpenBalance)) ||
+                                                        (!_isCredit && !_isValeMode && (!_checkoutPayments.Any() || _remainingToCover > 0 || _nonCashApplied > _total)))">
                                         <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check")"></i>
                                         @(_saving ? "Guardando..." : _isCredit ? "Confirmar crédito" : "Confirmar cobro")
                                     </button>
@@ -807,12 +837,13 @@ value;
     // ── Checkout modal ─────────────────────────────────
     private bool _showCheckoutModal;
     private bool _saving;
-    private long    _checkoutPaymentMethodId;
-    private decimal _amountPaid;
     private bool    _isCredit;
+    private bool    _isValeMode;
+    private long    _valePaymentMethodId;
     private decimal _valeAmount;
     private string  _valeName = "";
     private decimal _clientOpenBalance;
+    private List<CheckoutPaymentLineVM> _checkoutPayments = new();
 
     // ── Ticket modal ───────────────────────────────────
     private bool _showTicketModal;
@@ -863,17 +894,19 @@ value;
     private decimal _subtotal => _cart.Sum(x => x.Subtotal);
     private decimal _taxAmount => _cart.Sum(x => Math.Round(x.Subtotal * x.TaxRate / 100m, 2));
     private decimal _total => _subtotal + _taxAmount;
-    private decimal _change => Math.Max(0, _amountPaid - _total);
 
-    private bool _isCurrentPaymentCash =>
-        _paymentMethods
-            .FirstOrDefault(x => x.PaymentMethodId == _checkoutPaymentMethodId)
-            ?.Name.Contains("Efectivo", StringComparison.OrdinalIgnoreCase) ?? false;
-
-    private bool _isVale =>
-        !_isCredit &&
-        _paymentMethods.FirstOrDefault(x => x.PaymentMethodId == _checkoutPaymentMethodId)
-            ?.Name.Contains("Vale", StringComparison.OrdinalIgnoreCase) == true;
+    // ── Checkout payment split ──────────────────────────
+    // Varias formas de pago pueden convivir en una misma venta (ej: parte en
+    // Efectivo, parte en Transferencia). Solo la línea marcada IsCash admite
+    // "vuelto"; el resto se aplica tal cual fue ingresado.
+    private decimal _paymentsAssignedRaw => _checkoutPayments.Sum(p => p.Amount);
+    private decimal _nonCashApplied      => _checkoutPayments.Where(p => !p.IsCash).Sum(p => p.Amount);
+    private CheckoutPaymentLineVM? _cashLine => _checkoutPayments.FirstOrDefault(p => p.IsCash);
+    private decimal _dueBeforeCash       => Math.Max(0, _total - _nonCashApplied);
+    private decimal _cashApplied         => _cashLine == null ? 0 : Math.Min(_cashLine.Amount, _dueBeforeCash);
+    private decimal _change              => _cashLine == null ? 0 : Math.Max(0, _cashLine.Amount - _dueBeforeCash);
+    private decimal _totalApplied        => _nonCashApplied + _cashApplied;
+    private decimal _remainingToCover    => Math.Max(0, _total - _totalApplied);
 
     private List<StockProblemVM> StockProblems
     {
@@ -1081,6 +1114,18 @@ value;
         _selectedItem = _selectedItem == item ? null : item;
     }
 
+    // Permite cargar el importe que el cliente quiere gastar (ej: "$1000 de Criollo")
+    // en vez de la cantidad — recalcula la cantidad a partir del precio unitario.
+    private void SetAmountForItem(CartItem item, decimal amount)
+    {
+        if (amount <= 0 || item.UnitPrice <= 0) return;
+
+        decimal qty = amount / item.UnitPrice;
+        item.Quantity = item.AllowFractional
+            ? Math.Round(qty, 2)
+            : Math.Round(qty, 0, MidpointRounding.AwayFromZero);
+    }
+
     private void RemoveSelected()
     {
         if (_selectedItem == null) return;
@@ -1105,24 +1150,71 @@ value;
     private void ShowCheckoutModal()
     {
         if (!_cart.Any()) return;
-        _checkoutPaymentMethodId = _paymentMethods.FirstOrDefault()?.PaymentMethodId ?? 0;
-        _amountPaid = _total;
-        _isCredit = false;
+        _checkoutPayments.Clear();
+        _isCredit   = false;
+        _isValeMode = false;
+
+        var firstPm = _paymentMethods.FirstOrDefault(pm => !IsValeMethod(pm));
+        if (firstPm != null)
+        {
+            _checkoutPayments.Add(new CheckoutPaymentLineVM
+            {
+                PaymentMethodId = firstPm.PaymentMethodId,
+                MethodName      = firstPm.Name,
+                IsCash          = firstPm.IsCash,
+                Amount          = _total,
+            });
+        }
+
         _showCheckoutModal = true;
     }
 
-    private void SelectPaymentMethod(PaymentMethod pm)
+    private static bool IsValeMethod(PaymentMethod pm) =>
+        pm.Name.Contains("Vale", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsPaymentLineActive(PaymentMethod pm) =>
+        IsValeMethod(pm) ? _isValeMode : _checkoutPayments.Any(p => p.PaymentMethodId == pm.PaymentMethodId);
+
+    // Cada método "real" agrega/quita su propia línea de pago (permite combinar
+    // varios). Vale/Cupón y Crédito siguen siendo modos exclusivos, como antes.
+    private void TogglePaymentLine(PaymentMethod pm)
     {
-        _checkoutPaymentMethodId = pm.PaymentMethodId;
-        _amountPaid  = _total;
-        _isCredit    = false;
-        _valeAmount  = _total;
-        _valeName    = "";
+        _isCredit = false;
+
+        if (IsValeMethod(pm))
+        {
+            _isValeMode = true;
+            _checkoutPayments.Clear();
+            _valePaymentMethodId = pm.PaymentMethodId;
+            _valeAmount = _total;
+            _valeName   = "";
+            return;
+        }
+
+        _isValeMode = false;
+
+        var existing = _checkoutPayments.FirstOrDefault(p => p.PaymentMethodId == pm.PaymentMethodId);
+        if (existing != null)
+        {
+            _checkoutPayments.Remove(existing);
+            return;
+        }
+
+        _checkoutPayments.Add(new CheckoutPaymentLineVM
+        {
+            PaymentMethodId = pm.PaymentMethodId,
+            MethodName      = pm.Name,
+            IsCash          = pm.IsCash,
+            Amount          = Math.Max(0, _total - _totalApplied),
+        });
     }
+
+    private void RemovePaymentLine(CheckoutPaymentLineVM line) => _checkoutPayments.Remove(line);
 
     private async Task SelectCredit()
     {
-        _checkoutPaymentMethodId = 0;
+        _checkoutPayments.Clear();
+        _isValeMode = false;
         _isCredit = true;
         _clientOpenBalance = _client != null
             ? await creditRepository.GetOpenBalanceByClientIdAsync(_client.ClientId)
@@ -1154,7 +1246,7 @@ value;
             return;
         }
 
-        if (_isVale)
+        if (_isValeMode)
         {
             if (string.IsNullOrWhiteSpace(_valeName))
             {
@@ -1170,11 +1262,26 @@ value;
             }
         }
 
-        if (!_isCredit && _amountPaid < _total)
+        if (!_isCredit && !_isValeMode)
         {
-            await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
-                "Atención", "El monto recibido es menor al total.", "warning");
-            return;
+            if (!_checkoutPayments.Any())
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "Seleccioná al menos una forma de pago.", "warning");
+                return;
+            }
+            if (_nonCashApplied > _total)
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", "Los pagos electrónicos no pueden superar el total de la venta.", "warning");
+                return;
+            }
+            if (_remainingToCover > 0)
+            {
+                await IJSRuntime.InvokeVoidAsync("toastHelper.showWithLimitedTime",
+                    "Atención", $"Falta cubrir ${_remainingToCover:N2} del total.", "warning");
+                return;
+            }
         }
 
         if (_isCredit && _client!.LimiteCredito > 0)
@@ -1206,8 +1313,8 @@ value;
                 Discount = 0,
                 TaxAmount = _taxAmount,
                 Total = _total,
-                AmountPaid = _isCredit ? 0 : _amountPaid,
-                Change = _isCredit ? 0 : _change,
+                AmountPaid = _isCredit ? 0 : _isValeMode ? _valeAmount : _paymentsAssignedRaw,
+                Change = _isCredit || _isValeMode ? 0 : _change,
             };
 
             var details = _cart.Select(item => new SaleDetail
@@ -1244,33 +1351,45 @@ value;
                     OriginalAmount = _total,
                 }, posSessionService.StoreId);
             }
-            else
+            else if (_isValeMode)
             {
                 var payments = new List<SalePayment>
                 {
                     new SalePayment
                     {
-                        PaymentMethodId = _checkoutPaymentMethodId,
-                        Amount = _amountPaid,
+                        PaymentMethodId = _valePaymentMethodId,
+                        Amount = _valeAmount,
                     }
                 };
                 await saleRepository.AddFullSaleAsync(sale, details, payments, comboStockLines);
 
-                if (_isVale)
+                await cashMovementRepository.AddAsync(new CashMovement
                 {
-                    await cashMovementRepository.AddAsync(new CashMovement
+                    StoreId         = posSessionService.StoreId,
+                    SystemUserId    = posSessionService.SystemUserId,
+                    PaymentMethodId = _valePaymentMethodId,
+                    Type            = "IN",
+                    Amount          = _valeAmount,
+                    Reason          = $"Se expedio un vale con {_valeName} por ${_valeAmount:N2}",
+                });
+            }
+            else
+            {
+                // La línea en efectivo aporta solo lo aplicado a la venta (sin el
+                // vuelto); el resto de los métodos aportan lo ingresado tal cual.
+                var payments = _checkoutPayments
+                    .Select(p => new SalePayment
                     {
-                        StoreId      = posSessionService.StoreId,
-                        SystemUserId = posSessionService.SystemUserId,
-                        Type         = "IN",
-                        Amount       = _valeAmount,
-                        Reason       = $"Se expedio un vale con {_valeName} por ${_valeAmount:N2}",
-                    });
-                }
+                        PaymentMethodId = p.PaymentMethodId,
+                        Amount          = p.IsCash ? _cashApplied : p.Amount,
+                    })
+                    .ToList();
+                await saleRepository.AddFullSaleAsync(sale, details, payments, comboStockLines);
             }
 
             string paymentMethodName = _isCredit ? "Crédito" :
-                _paymentMethods.FirstOrDefault(p => p.PaymentMethodId == _checkoutPaymentMethodId)?.Name ?? "";
+                _isValeMode ? (_paymentMethods.FirstOrDefault(p => p.PaymentMethodId == _valePaymentMethodId)?.Name ?? "Vale") :
+                string.Join(" + ", _checkoutPayments.Select(p => p.MethodName));
             string clientName = _client != null
                 ? $"{_client.Nombres} {_client.Apellidos}".Trim()
                 : "";
@@ -1698,8 +1817,8 @@ value;
             IssuedAt = DateTime.Now,
             ClientName = clientName,
             PaymentMethod = paymentMethodName,
-            AmountPaid = _isCredit ? 0 : _amountPaid,
-            Change = _isCredit ? 0 : _change,
+            AmountPaid = _isCredit ? 0 : _isValeMode ? _valeAmount : _paymentsAssignedRaw,
+            Change = _isCredit || _isValeMode ? 0 : _change,
             Subtotal = sale.Subtotal,
             TaxAmount = sale.TaxAmount,
             Total = sale.Total,
@@ -1854,6 +1973,14 @@ value;
         public string Name { get; set; } = "";
         public decimal Stock { get; set; }
         public decimal Quantity { get; set; }
+    }
+
+    private class CheckoutPaymentLineVM
+    {
+        public long    PaymentMethodId { get; set; }
+        public string  MethodName      { get; set; } = "";
+        public bool    IsCash          { get; set; }
+        public decimal Amount          { get; set; }
     }
 
     private class TicketVM

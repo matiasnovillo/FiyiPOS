@@ -19,5 +19,14 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Repositories
             await using var DbContext = await _factory.CreateDbContextAsync();
             return await DbContext.PaymentMethod.AsNoTracking().Where(x => x.Active).OrderBy(x => x.Name).ToListAsync();
         }
+
+        public async Task<long> GetCashMethodIdAsync()
+        {
+            await using var DbContext = await _factory.CreateDbContextAsync();
+            return await DbContext.PaymentMethod.AsNoTracking()
+                .Where(x => x.IsCash)
+                .Select(x => x.PaymentMethodId)
+                .FirstOrDefaultAsync();
+        }
     }
 }

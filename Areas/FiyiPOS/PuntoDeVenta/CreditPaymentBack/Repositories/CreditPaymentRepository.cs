@@ -73,12 +73,13 @@ namespace FiyiPOS.Areas.FiyiPOS.PuntoDeVenta.CreditPaymentBack.Repositories
 
                     await db.CashMovement.AddAsync(new CashMovement
                     {
-                        StoreId      = credit.StoreId,
-                        SystemUserId = payment.SystemUserId,
-                        Type         = "IN",
-                        Amount       = payment.Amount,
-                        Reason       = $"Abono crédito #{payment.CreditId} — {clientName}",
-                        MovementDate = payment.PaymentDate,
+                        StoreId         = credit.StoreId,
+                        SystemUserId    = payment.SystemUserId,
+                        PaymentMethodId = pm.PaymentMethodId,
+                        Type            = "IN",
+                        Amount          = payment.Amount,
+                        Reason          = $"Abono crédito #{payment.CreditId} — {clientName}",
+                        MovementDate    = payment.PaymentDate,
                     });
                 }
 

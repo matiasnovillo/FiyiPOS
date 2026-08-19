@@ -58,6 +58,10 @@ SaleDetail         [✓]     Backend completo. Insertado dentro de
 
 SalePayment        [✓]     Backend completo. Insertado dentro de
                            AddFullSaleAsync. Sin UI separada.
+                           Modal "Cobrar venta" (VentasModule) admite
+                           combinar varias formas de pago en una misma
+                           venta (ej: parte Efectivo + parte Transferencia)
+                           (2026-08-19).
 
 CashCut            [✓]     Backend completo (GetPreviewAsync +
                            CreateAsync + GetAllByStoreIdAsync).

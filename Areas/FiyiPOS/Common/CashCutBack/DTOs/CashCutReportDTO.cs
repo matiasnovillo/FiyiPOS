@@ -30,7 +30,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.DTOs
 
         public record PurchaseLine(string SupplierName, string? Invoice, DateTime Date, int ItemCount, decimal Subtotal, decimal TaxAmount, decimal Total, bool IsConfirmed);
         public record PaymentLine(string MethodName, bool IsCash, int Count, decimal Total);
-        public record MovementLine(string Type, decimal Amount, string Reason, string Operator, DateTime Date);
+        public record MovementLine(string Type, decimal Amount, string Reason, string Operator, DateTime Date, string PaymentMethodName);
         public record SaleLine(string Ticket, DateTime Date, string Operator, string Client, decimal Total, string PaymentMethod, bool IsCredit);
         public record ReturnLine(string OriginalTicket, DateTime Date, string Reason, decimal Amount, string Operator);
         public record CreditLine(string Client, decimal Original, decimal Balance, DateTime Date);

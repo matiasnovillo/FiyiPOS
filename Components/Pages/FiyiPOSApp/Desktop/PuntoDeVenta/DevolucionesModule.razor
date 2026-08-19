@@ -7,11 +7,13 @@
 @using FiyiPOS.Areas.FiyiPOS.Common.SaleDetailBack.Entities
 @using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
 @using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Repositories
 @using FiyiPOS.Services.FiyiPOS
 
 @inject ReturnSaleRepository returnSaleRepository
 @inject SaleRepository saleRepository
 @inject CashMovementRepository cashMovementRepository
+@inject PaymentMethodRepository paymentMethodRepository
 @inject PosSessionService posSessionService
 @inject IJSRuntime JS
 
@@ -474,11 +476,12 @@
             decimal returnTotal = details.Sum(d => d.Subtotal);
             await cashMovementRepository.AddAsync(new CashMovement
             {
-                StoreId      = posSessionService.StoreId,
-                SystemUserId = posSessionService.SystemUserId,
-                Type         = "OUT",
-                Amount       = returnTotal,
-                Reason       = $"Devolución del ticket {_foundSale.TicketNumber}",
+                StoreId         = posSessionService.StoreId,
+                SystemUserId    = posSessionService.SystemUserId,
+                PaymentMethodId = await paymentMethodRepository.GetCashMethodIdAsync(),
+                Type            = "OUT",
+                Amount          = returnTotal,
+                Reason          = $"Devolución del ticket {_foundSale.TicketNumber}",
             });
 
             await JS.InvokeVoidAsync("toastHelper.showWithLimitedTime",

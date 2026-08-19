@@ -23,16 +23,19 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
             return await (
                 from m in db.CashMovement
                 join u in db.SystemUser on m.SystemUserId equals u.SystemUserId
+                join pm in db.PaymentMethod on m.PaymentMethodId equals pm.PaymentMethodId
                 where m.StoreId == storeId
                 orderby m.MovementDate descending
                 select new CashMovementListItem
                 {
-                    CashMovementId = m.CashMovementId,
-                    Type           = m.Type,
-                    Amount         = m.Amount,
-                    Reason         = m.Reason,
-                    MovementDate   = m.MovementDate,
-                    OperatorName   = u.Name,
+                    CashMovementId    = m.CashMovementId,
+                    Type              = m.Type,
+                    Amount            = m.Amount,
+                    Reason            = m.Reason,
+                    MovementDate      = m.MovementDate,
+                    OperatorName      = u.Name,
+                    PaymentMethodId   = pm.PaymentMethodId,
+                    PaymentMethodName = pm.Name,
                 }
             ).Take(take).ToListAsync();
         }
@@ -40,23 +43,24 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
         public async Task<List<CashMovementListItem>> GetByStoreAndPeriodAsync(long storeId, DateTime dateFrom, DateTime dateTo)
         {
             await using var db = await _factory.CreateDbContextAsync();
-            return await db.CashMovement
-                .AsNoTracking()
-                .Where(m => m.StoreId == storeId && m.MovementDate >= dateFrom && m.MovementDate < dateTo)
-                .Join(db.SystemUser,
-                      m => m.SystemUserId,
-                      u => u.SystemUserId,
-                      (m, u) => new CashMovementListItem
-                      {
-                          CashMovementId = m.CashMovementId,
-                          Type           = m.Type,
-                          Amount         = m.Amount,
-                          Reason         = m.Reason,
-                          MovementDate   = m.MovementDate,
-                          OperatorName   = u.Name,
-                      })
-                .OrderByDescending(m => m.MovementDate)
-                .ToListAsync();
+            return await (
+                from m in db.CashMovement
+                join u in db.SystemUser on m.SystemUserId equals u.SystemUserId
+                join pm in db.PaymentMethod on m.PaymentMethodId equals pm.PaymentMethodId
+                where m.StoreId == storeId && m.MovementDate >= dateFrom && m.MovementDate < dateTo
+                orderby m.MovementDate descending
+                select new CashMovementListItem
+                {
+                    CashMovementId    = m.CashMovementId,
+                    Type              = m.Type,
+                    Amount            = m.Amount,
+                    Reason            = m.Reason,
+                    MovementDate      = m.MovementDate,
+                    OperatorName      = u.Name,
+                    PaymentMethodId   = pm.PaymentMethodId,
+                    PaymentMethodName = pm.Name,
+                }
+            ).ToListAsync();
         }
     }
 }

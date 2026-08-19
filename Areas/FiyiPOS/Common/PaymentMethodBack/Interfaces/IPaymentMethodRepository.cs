@@ -6,5 +6,6 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Interfaces
     {
         Task<List<PaymentMethod>> GetAllAsync();
         Task<List<PaymentMethod>> GetAllActiveAsync();
+        Task<long> GetCashMethodIdAsync();
     }
 }

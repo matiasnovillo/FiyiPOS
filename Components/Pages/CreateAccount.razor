@@ -84,7 +84,7 @@
                                 <div class="input-group input-group-static mb-3">
                                     <label>
                                         <i class="fas fa-user fa-xl"></i>&nbsp;
-                                        <span class="fs-6">Nombre completo</span>
+                                        <span class="fs-6">Nombre de usuario</span>
                                     </label>
                                     <input type="text" class="form-control fs-6"
                                            @bind="Model!.FullName" autocomplete="name" />
@@ -202,6 +202,12 @@
             if (await systemUserRepository.ExistsByUsernameAsync(Model.Email))
             {
                 _errorMessage = "Ya existe una cuenta con ese email.";
+                return;
+            }
+
+            if (await systemUserRepository.ExistsByNameAsync(Model.FullName.Trim()))
+            {
+                _errorMessage = "Ya existe una cuenta con ese nombre de usuario.";
                 return;
             }
 

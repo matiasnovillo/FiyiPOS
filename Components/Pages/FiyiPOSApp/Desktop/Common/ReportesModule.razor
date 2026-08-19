@@ -162,13 +162,13 @@
                 </tbody>
             </table>
         }
-        <!-- Movimientos de efectivo del período -->
+        <!-- Movimientos de caja del período -->
         <div class="rep-section-title" style="margin-top:1.2rem;">
-            <i class="fas fa-exchange-alt ms-2 me-2 fa-xl"></i>Movimientos de efectivo del período
+            <i class="fas fa-exchange-alt ms-2 me-2 fa-xl"></i>Movimientos de caja del período
         </div>
         @if (!_movements.Any())
         {
-            <div class="rep-empty">Sin movimientos de efectivo en el período seleccionado.</div>
+            <div class="rep-empty">Sin movimientos de caja en el período seleccionado.</div>
         }
         else
         {
@@ -212,6 +212,7 @@
                         <th class="fs-6">Tipo</th>
                         <th class="fs-6">Fecha y hora</th>
                         <th class="fs-6">Concepto</th>
+                        <th class="fs-6">Método</th>
                         <th class="fs-6">Operador</th>
                         <th class="rep-num fs-6">Importe</th>
                     </tr>
@@ -232,6 +233,7 @@
                             </td>
                             <td class="fs-6" style="color:var(--text-muted);">@m.MovementDate.ToString("dd/MM/yyyy HH:mm")</td>
                             <td class="fs-6">@m.Reason</td>
+                            <td class="fs-6">@m.PaymentMethodName</td>
                             <td class="fs-6">@m.OperatorName</td>
                             <td class="rep-num rep-bold fs-6" style="color:@(m.Type == "IN" ? "#059669" : "#dc2626");">
                                 @(m.Type == "IN" ? "+" : "−")$@m.Amount.ToString("N2")
@@ -1002,8 +1004,8 @@
         // Cash movements
         if (_movements.Any())
         {
-            sb.Append("<div class='section'><div class='sec-title'>Movimientos de efectivo</div>");
-            sb.Append("<table><thead><tr><th>Tipo</th><th>Fecha</th><th>Concepto</th><th>Operador</th><th class='num'>Importe</th></tr></thead><tbody>");
+            sb.Append("<div class='section'><div class='sec-title'>Movimientos de caja</div>");
+            sb.Append("<table><thead><tr><th>Tipo</th><th>Fecha</th><th>Concepto</th><th>Método</th><th>Operador</th><th class='num'>Importe</th></tr></thead><tbody>");
             foreach (var m in _movements)
             {
                 string badge = m.Type == "IN" ? "<span class='badge-in'>Entrada</span>" : "<span class='badge-out'>Salida</span>";
@@ -1012,6 +1014,7 @@
                 sb.Append("<tr><td>").Append(badge).Append("</td>")
                   .Append("<td>").Append(H(m.MovementDate.ToString("dd/MM/yyyy HH:mm"))).Append("</td>")
                   .Append("<td>").Append(H(m.Reason)).Append("</td>")
+                  .Append("<td>").Append(H(m.PaymentMethodName)).Append("</td>")
                   .Append("<td>").Append(H(m.OperatorName)).Append("</td>")
                   .Append("<td class='num bold' style='").Append(clr).Append("'>").Append(sign).Append("$").Append(m.Amount.ToString("N2")).Append("</td></tr>");
             }

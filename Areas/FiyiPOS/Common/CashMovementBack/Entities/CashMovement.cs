@@ -8,6 +8,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
         public long     CashMovementId { get; set; }
         public long     StoreId        { get; set; }
         public long     SystemUserId   { get; set; }
+        public long     PaymentMethodId { get; set; }
         public string   Type           { get; set; } = string.Empty; // "IN" | "OUT"
         public decimal  Amount         { get; set; }
         public string   Reason         { get; set; } = string.Empty;

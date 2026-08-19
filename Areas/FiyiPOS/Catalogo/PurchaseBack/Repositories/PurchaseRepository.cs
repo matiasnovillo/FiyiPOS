@@ -181,14 +181,20 @@ namespace FiyiPOS.Areas.FiyiPOS.Catalogo.PurchaseBack.Repositories
                         .Select(s => s.Name)
                         .FirstOrDefaultAsync() ?? "";
 
+                    long cashMethodId = await db.PaymentMethod.AsNoTracking()
+                        .Where(pm => pm.IsCash)
+                        .Select(pm => pm.PaymentMethodId)
+                        .FirstOrDefaultAsync();
+
                     await db.CashMovement.AddAsync(new CashMovement
                     {
-                        StoreId      = purchase.StoreId,
-                        SystemUserId = systemUserId,
-                        Type         = "OUT",
-                        Amount       = purchase.Total,
-                        Reason       = $"Pago compra #{purchaseId} · {supplierName}",
-                        MovementDate = now
+                        StoreId         = purchase.StoreId,
+                        SystemUserId    = systemUserId,
+                        PaymentMethodId = cashMethodId,
+                        Type            = "OUT",
+                        Amount          = purchase.Total,
+                        Reason          = $"Pago compra #{purchaseId} · {supplierName}",
+                        MovementDate    = now
                     });
                 }
 

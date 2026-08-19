@@ -5,6 +5,7 @@
 @using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
 @using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
 @using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Repositories
 @using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Entities
 @using FiyiPOS.DatabaseContexts
 @using FiyiPOS.Mailing
@@ -14,6 +15,7 @@
 
 @inject CashCutRepository cashCutRepository
 @inject CashMovementRepository cashMovementRepository
+@inject PaymentMethodRepository paymentMethodRepository
 @inject PosSessionService posSessionService
 @inject IServiceScopeFactory _scopeFactory
 
@@ -636,11 +638,12 @@
                 string operatorName = posSessionService.OperatorName;
                 await cashMovementRepository.AddAsync(new CashMovement
                 {
-                    StoreId      = posSessionService.StoreId,
-                    SystemUserId = posSessionService.SystemUserId,
-                    Type         = leftDiff > 0 ? "IN" : "OUT",
-                    Amount       = Math.Abs(leftDiff),
-                    Reason       = leftDiff > 0
+                    StoreId         = posSessionService.StoreId,
+                    SystemUserId    = posSessionService.SystemUserId,
+                    PaymentMethodId = await paymentMethodRepository.GetCashMethodIdAsync(),
+                    Type            = leftDiff > 0 ? "IN" : "OUT",
+                    Amount          = Math.Abs(leftDiff),
+                    Reason          = leftDiff > 0
                         ? $"Corte de caja. El usuario {operatorName} dejó ${leftDiff:N2} de más"
                         : $"Corte de caja. El usuario {operatorName} se lleva ${Math.Abs(leftDiff):N2}",
                 });

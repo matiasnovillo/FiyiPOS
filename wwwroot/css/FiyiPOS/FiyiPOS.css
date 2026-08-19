@@ -2307,6 +2307,32 @@ button.nav-notepad {
 .qty-input::-webkit-outer-spin-button { -webkit-appearance: none; }
 .qty-input { -moz-appearance: textfield; }
 
+.amount-input {
+    width: 100%;
+    text-align: right;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: .2rem .3rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: inherit;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s;
+}
+
+.amount-input:hover,
+.amount-input:focus {
+    border-color: var(--primary);
+    background: #fff;
+}
+
+/* Hide number spinners on amount-input */
+.amount-input::-webkit-inner-spin-button,
+.amount-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.amount-input { -moz-appearance: textfield; }
+
 /* Multi-line totals panel */
 .total-lines {
     background: linear-gradient(135deg, var(--primary-dark), var(--primary));
@@ -2375,7 +2401,7 @@ button.nav-notepad {
     background: white;
     border-radius: 14px;
     padding: 1.5rem 2rem;
-    width: 440px;
+    width: 520px;
     max-width: 92vw;
     display: flex;
     flex-direction: column;
@@ -2453,7 +2479,8 @@ button.nav-notepad {
     color: #6b7280;
     white-space: nowrap;
     font-weight: 500;
-    min-width: 70px;
+    min-width: 110px;
+    flex-shrink: 0;
     text-align: right;
 }
 
@@ -2473,6 +2500,35 @@ button.nav-notepad {
 .ventas-amount-input:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 2px rgba(26,172,177,.12);
+}
+
+.ventas-payment-lines {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    width: 100%;
+}
+
+.ventas-pm-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    flex-shrink: 0;
+    border: 2px solid #d1d5db;
+    border-radius: 6px;
+    background: #f9fafb;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all .15s;
+}
+
+.ventas-pm-remove:hover {
+    border-color: #fca5a5;
+    background: #fef2f2;
+    color: #dc2626;
 }
 
 .ventas-change-row {

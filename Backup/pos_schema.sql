@@ -403,6 +403,26 @@ CREATE TABLE InventoryMovement (
 );
 
 -- ────────────────────────────────────────────────────────────────────
+-- 20b. CashMovement — Movimiento manual de caja (módulo Movimientos)
+--      Entradas/salidas de dinero fuera de una venta (fondo inicial,
+--      pago a proveedor en efectivo, retiro parcial, etc.).
+--      PaymentMethodId indica por qué medio entró/salió el dinero;
+--      solo los de IsCash=1 afectan el efectivo físico esperado en
+--      el Corte de Caja — el resto se contabiliza como recaudación
+--      por ese método, igual que una venta.
+-- ────────────────────────────────────────────────────────────────────
+CREATE TABLE CashMovement (
+    CashMovementId  BIGINT          IDENTITY(1,1) PRIMARY KEY,
+    StoreId         BIGINT          NOT NULL REFERENCES Store(StoreId),
+    SystemUserId    BIGINT          NOT NULL REFERENCES SystemUser(SystemUserId),
+    PaymentMethodId BIGINT          NOT NULL REFERENCES PaymentMethod(PaymentMethodId),
+    Type            VARCHAR(3)      NOT NULL,   -- 'IN' | 'OUT'
+    Amount          NUMERIC(18,2)   NOT NULL,
+    Reason          VARCHAR(200)    NOT NULL,
+    MovementDate    DATETIME        NOT NULL DEFAULT GETDATE()
+);
+
+-- ────────────────────────────────────────────────────────────────────
 -- 21. CashCut — Corte de caja (módulo Corte)
 --     Registro del cierre de turno del cajero. Compara el dinero
 --     esperado según ventas vs el dinero contado físicamente.
@@ -556,6 +576,23 @@ INSERT INTO Config ([Key], Value, Description) VALUES
 -- Agregado para el flujo de "Olvidé mi contraseña" (2026-08-14):
 -- ALTER TABLE SystemUser ADD PasswordResetToken VARCHAR(50) NULL;
 -- ALTER TABLE SystemUser ADD PasswordResetTokenExpiresAt DATETIME NULL;
+
+-- Método de pago en Movimientos de caja (2026-08-19): permite registrar una
+-- entrada/salida por transferencia, tarjeta, etc., no solo en efectivo.
+-- Los movimientos históricos quedan como Efectivo (era el único caso posible).
+-- Nota: si las tablas ya fueron renombradas con puntos (ver bloque de renombrado
+-- más abajo), hay que usar corchetes en AMBOS lados de cada referencia, ej.
+-- [FiyiPOS.Common.CashMovement] / [FiyiPOS.Common.PaymentMethod] — sin corchetes,
+-- SQL Server interpreta los puntos como separadores de base/esquema/tabla.
+-- ALTER TABLE CashMovement ADD PaymentMethodId BIGINT NULL;
+-- UPDATE CashMovement SET PaymentMethodId = (SELECT TOP 1 PaymentMethodId FROM PaymentMethod WHERE IsCash = 1)
+-- WHERE PaymentMethodId IS NULL;
+-- ALTER TABLE CashMovement ALTER COLUMN PaymentMethodId BIGINT NOT NULL;
+-- ALTER TABLE CashMovement ADD CONSTRAINT FK_CashMovement_PaymentMethod
+--     FOREIGN KEY (PaymentMethodId) REFERENCES PaymentMethod(PaymentMethodId);
+-- Si tus tablas ya están renombradas, usá en cambio:
+-- ALTER TABLE [FiyiPOS.Common.CashMovement] ADD CONSTRAINT FK_CashMovement_PaymentMethod
+--     FOREIGN KEY (PaymentMethodId) REFERENCES [FiyiPOS.Common.PaymentMethod](PaymentMethodId);
 
 -- Eliminación de SystemUser.StoreId (reemplazado por SystemUserStore N:M):
 -- DECLARE @sql NVARCHAR(500)

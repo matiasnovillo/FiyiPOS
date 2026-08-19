@@ -103,14 +103,14 @@ td{padding:5px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
             {
                 decimal movIn  = r.Movements.Where(m => m.Type == "IN").Sum(m => m.Amount);
                 decimal movOut = r.Movements.Where(m => m.Type == "OUT").Sum(m => m.Amount);
-                sb.Append($"<h2>Movimientos de efectivo ({r.Movements.Count})</h2><table><thead><tr><th>Tipo</th><th>Fecha y hora</th><th>Concepto</th><th>Operador</th><th class='r'>Importe</th></tr></thead><tbody>");
+                sb.Append($"<h2>Movimientos de caja ({r.Movements.Count})</h2><table><thead><tr><th>Tipo</th><th>Fecha y hora</th><th>Concepto</th><th>Método</th><th>Operador</th><th class='r'>Importe</th></tr></thead><tbody>");
                 foreach (var m in r.Movements)
                 {
                     string badge = m.Type == "IN" ? "<span class='badge bin'>Entrada</span>" : "<span class='badge bout'>Salida</span>";
                     string sign  = m.Type == "IN" ? "+" : "−";
-                    sb.Append($"<tr><td>{badge}</td><td>{m.Date:dd/MM/yyyy HH:mm}</td><td>{Esc(m.Reason)}</td><td>{Esc(m.Operator)}</td><td class='r'>{sign}{M(m.Amount)}</td></tr>");
+                    sb.Append($"<tr><td>{badge}</td><td>{m.Date:dd/MM/yyyy HH:mm}</td><td>{Esc(m.Reason)}</td><td>{Esc(m.PaymentMethodName)}</td><td>{Esc(m.Operator)}</td><td class='r'>{sign}{M(m.Amount)}</td></tr>");
                 }
-                sb.Append($"<tr class='tr-last'><td colspan='3'></td><td>Entradas: {M(movIn)} / Salidas: {M(movOut)}</td><td class='r'>{M(movIn - movOut)}</td></tr>");
+                sb.Append($"<tr class='tr-last'><td colspan='4'></td><td>Entradas: {M(movIn)} / Salidas: {M(movOut)}</td><td class='r'>{M(movIn - movOut)}</td></tr>");
                 sb.Append("</tbody></table>");
             }
 

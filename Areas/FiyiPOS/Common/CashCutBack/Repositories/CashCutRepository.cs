@@ -41,7 +41,7 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
             decimal totalRevenue = salesInPeriod.Sum(s => s.Total);
 
             // Aggregate SalePayments joined with PaymentMethod for those sales
-            var lines = await (
+            var salePaymentLines = await (
                 from sp in DbContext.SalePayment
                 join pm in DbContext.PaymentMethod on sp.PaymentMethodId equals pm.PaymentMethodId
                 where saleIds.Contains(sp.SaleId)
@@ -56,14 +56,44 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
                 }
             ).ToListAsync();
 
-            // Cash movements in the period
-            var movements = await DbContext.CashMovement
-                .AsNoTracking()
-                .Where(m => m.StoreId == storeId && m.MovementDate >= periodStart && m.MovementDate <= periodEnd)
-                .ToListAsync();
+            // Cash movements in the period, joined with PaymentMethod
+            var movements = await (
+                from m in DbContext.CashMovement
+                join pm in DbContext.PaymentMethod on m.PaymentMethodId equals pm.PaymentMethodId
+                where m.StoreId == storeId && m.MovementDate >= periodStart && m.MovementDate <= periodEnd
+                select new { m.Type, m.Amount, pm.PaymentMethodId, pm.Name, pm.IsCash }
+            ).ToListAsync();
 
-            decimal totalCashIn  = movements.Where(m => m.Type == "IN").Sum(m => m.Amount);
-            decimal totalCashOut = movements.Where(m => m.Type == "OUT").Sum(m => m.Amount);
+            // Solo los movimientos en efectivo físico afectan el monto esperado en la gaveta
+            decimal totalCashIn  = movements.Where(m => m.IsCash && m.Type == "IN").Sum(m => m.Amount);
+            decimal totalCashOut = movements.Where(m => m.IsCash && m.Type == "OUT").Sum(m => m.Amount);
+
+            // Las entradas manuales por métodos no-efectivo (transferencia, tarjeta, etc.)
+            // se suman a la recaudación por forma de pago, igual que una venta por ese medio.
+            var nonCashMovementLines = movements
+                .Where(m => !m.IsCash && m.Type == "IN")
+                .GroupBy(m => new { m.PaymentMethodId, m.Name })
+                .Select(g => new CashCutDetailLineDTO
+                {
+                    PaymentMethodId   = g.Key.PaymentMethodId,
+                    PaymentMethodName = g.Key.Name,
+                    IsCash            = false,
+                    TotalCollected    = g.Sum(x => x.Amount),
+                    TransactionCount  = g.Count()
+                });
+
+            var lines = salePaymentLines
+                .Concat(nonCashMovementLines)
+                .GroupBy(l => new { l.PaymentMethodId, l.PaymentMethodName, l.IsCash })
+                .Select(g => new CashCutDetailLineDTO
+                {
+                    PaymentMethodId   = g.Key.PaymentMethodId,
+                    PaymentMethodName = g.Key.PaymentMethodName,
+                    IsCash            = g.Key.IsCash,
+                    TotalCollected    = g.Sum(x => x.TotalCollected),
+                    TransactionCount  = g.Sum(x => x.TransactionCount)
+                })
+                .ToList();
 
             return new CashCutPreviewDTO
             {
@@ -137,11 +167,12 @@ namespace FiyiPOS.Areas.FiyiPOS.Common.CashCutBack.Repositories
             var movements = await (
                 from m in db.CashMovement
                 join u in db.SystemUser on m.SystemUserId equals u.SystemUserId
+                join pm in db.PaymentMethod on m.PaymentMethodId equals pm.PaymentMethodId
                 where m.StoreId == cut.StoreId
                       && m.MovementDate >= periodFrom
                       && m.MovementDate <= periodTo
                 orderby m.MovementDate
-                select new MovementLine(m.Type, m.Amount, m.Reason, u.Name, m.MovementDate)
+                select new MovementLine(m.Type, m.Amount, m.Reason, u.Name, m.MovementDate, pm.Name)
             ).ToListAsync();
 
             // Sales in the period

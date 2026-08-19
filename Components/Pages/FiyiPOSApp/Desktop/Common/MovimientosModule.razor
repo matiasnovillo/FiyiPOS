@@ -1,16 +1,19 @@
 @using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.DTOs
 @using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Entities
 @using FiyiPOS.Areas.FiyiPOS.Common.CashMovementBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.PaymentMethodBack.Repositories
 @using FiyiPOS.Services.FiyiPOS
 
-@inject CashMovementRepository cashMovementRepository
-@inject PosSessionService       posSessionService
-@inject IJSRuntime              JS
+@inject CashMovementRepository    cashMovementRepository
+@inject PaymentMethodRepository   paymentMethodRepository
+@inject PosSessionService         posSessionService
+@inject IJSRuntime                JS
 
 <!-- ── HEADER ── -->
 <div class="header">
-    <div class="header-title">MOVIMIENTOS DE EFECTIVO</div>
-    <div class="header-sub">Entradas y salidas de dinero en la caja de efectivo, fuera de ventas</div>
+    <div class="header-title">MOVIMIENTOS DE CAJA</div>
+    <div class="header-sub">Entradas y salidas de dinero fuera de ventas, por cualquier método de pago</div>
 </div>
 
 <!-- ── STATS (totales globales) ── -->
@@ -103,6 +106,7 @@
                     <th>Tipo</th>
                     <th>Fecha y hora</th>
                     <th>Concepto</th>
+                    <th>Método</th>
                     <th>Operador</th>
                     <th style="text-align:right;">Importe</th>
                 </tr>
@@ -123,6 +127,7 @@
                         </td>
                         <td class="fs-6" style="color:var(--text-muted);">@m.MovementDate.ToString("dd/MM/yyyy HH:mm")</td>
                         <td class="fs-6">@m.Reason</td>
+                        <td class="fs-6">@m.PaymentMethodName</td>
                         <td class="fs-6">@m.OperatorName</td>
                         <td class="fs-6" style="text-align:right;font-weight:600;color:@(m.Type == "IN" ? "#059669" : "#dc2626");">
                             @(m.Type == "IN" ? "+" : "−")$@m.Amount.ToString("N2")
@@ -188,6 +193,19 @@
                         <input type="number" min="0.01" step="0.01"
                                @bind="_amount" @bind:event="oninput" />
                     </div>
+                    <div class="field field-full">
+                        <label>Método de pago <span class="required-star">*</span></label>
+                        <div class="ventas-pm-grid" style="justify-content:flex-start;">
+                            @foreach (var pm in _paymentMethods)
+                            {
+                                <button type="button" class="pm-btn @(_selectedPaymentMethodId == pm.PaymentMethodId ? "active" : "")"
+                                        @onclick="() => _selectedPaymentMethodId = pm.PaymentMethodId">
+                                    <i class="fas @GetPaymentIcon(pm.Name)"></i>
+                                    <span class="fs-6">@pm.Name</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -196,7 +214,7 @@
                     <i class="fas fa-times"></i> Cancelar
                 </button>
                 <button class="abtn @(_modalType == "IN" ? "abtn-success" : "abtn-danger")"
-                        @onclick="SaveAsync" disabled="@(_saving || _amount <= 0 || string.IsNullOrWhiteSpace(_reason))">
+                        @onclick="SaveAsync" disabled="@(_saving || _amount <= 0 || string.IsNullOrWhiteSpace(_reason) || _selectedPaymentMethodId <= 0)">
                     <i class="fas @(_saving ? "fa-spinner fa-spin" : "fa-check-double")"></i>
                     @(_saving ? "Guardando..." : (_modalType == "IN" ? "Registrar entrada" : "Registrar salida"))
                 </button>
@@ -216,7 +234,8 @@
     private int       _pageIndex = 1;
     private const int _pageSize  = 20;
 
-    private List<CashMovementListItem> _items = new();
+    private List<CashMovementListItem> _items          = new();
+    private List<PaymentMethod>        _paymentMethods = new();
 
     // ── Stats (totales globales) ───────────────────────
     private decimal _totalIn  => _items.Where(m => m.Type == "IN").Sum(m => m.Amount);
@@ -239,13 +258,18 @@
         _filtered.Skip((_pageIndex - 1) * _pageSize).Take(_pageSize);
 
     // ── Modal ─────────────────────────────────────────
-    private bool    _showModal = false;
-    private string  _modalType = "IN";
-    private decimal _amount    = 0;
-    private string  _reason    = "";
+    private bool    _showModal              = false;
+    private string  _modalType              = "IN";
+    private decimal _amount                 = 0;
+    private string  _reason                 = "";
+    private long    _selectedPaymentMethodId;
 
     // ── Lifecycle ─────────────────────────────────────
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        _paymentMethods = await paymentMethodRepository.GetAllActiveAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -273,25 +297,37 @@
         _modalType = type;
         _amount    = 0;
         _reason    = "";
+        _selectedPaymentMethodId = _paymentMethods.FirstOrDefault(pm => pm.IsCash)?.PaymentMethodId
+            ?? _paymentMethods.FirstOrDefault()?.PaymentMethodId ?? 0;
         _showModal = true;
     }
 
     private void CloseModal() => _showModal = false;
 
+    private static string GetPaymentIcon(string name) => name.ToLower() switch
+    {
+        var n when n.Contains("efectivo")  => "fa-money-bill-wave",
+        var n when n.Contains("tarjeta")   => "fa-credit-card",
+        var n when n.Contains("transfer")  => "fa-exchange-alt",
+        var n when n.Contains("vale")      => "fa-ticket-alt",
+        _                                  => "fa-coins"
+    };
+
     private async Task SaveAsync()
     {
-        if (_amount <= 0 || string.IsNullOrWhiteSpace(_reason)) return;
+        if (_amount <= 0 || string.IsNullOrWhiteSpace(_reason) || _selectedPaymentMethodId <= 0) return;
 
         _saving = true;
         try
         {
             await cashMovementRepository.AddAsync(new CashMovement
             {
-                StoreId      = posSessionService.StoreId,
-                SystemUserId = posSessionService.SystemUserId,
-                Type         = _modalType,
-                Amount       = _amount,
-                Reason       = _reason.Trim(),
+                StoreId         = posSessionService.StoreId,
+                SystemUserId    = posSessionService.SystemUserId,
+                PaymentMethodId = _selectedPaymentMethodId,
+                Type            = _modalType,
+                Amount          = _amount,
+                Reason          = _reason.Trim(),
             });
 
             CloseModal();
