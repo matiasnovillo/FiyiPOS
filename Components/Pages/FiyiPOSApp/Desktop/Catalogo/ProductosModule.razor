@@ -121,8 +121,8 @@
             <thead>
                 <tr>
                     <th>Producto</th>
-                    <th>Categoría</th>
                     <th>Precio venta</th>
+                    <th>Precio nocturno/Precio mayorista</th>
                     <th>Precio costo</th>
                     <th>Stock</th>
                     <th>Estado</th>
@@ -156,8 +156,8 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="fs-6">@GetCategoryName(p.CategoryId)</td>
                         <td class="fs-6">$@p.SalePrice.ToString("N2")</td>
+                        <td class="fs-6">$@p.NightSalePrice.ToString("N2")/$@((p.WholesalePrice ?? 0).ToString("N2"))</td>
                         <td class="fs-6">$@p.CostPrice.ToString("N2")</td>
                         <td>
                             @if (p.Stock <= p.MinStock)
@@ -315,8 +315,13 @@
 
                     <div class="field">
                         <label>Precio de venta <span class="required-star">*</span></label>
-                        <input type="number" min="0" step="0.01" @bind="_form.SalePrice"
+                        <input type="number" min="0" step="0.01" @bind="_form.SalePrice" @bind:event="oninput" @bind:after="SyncNightSalePrice"
                                class="@(_showValidation && _form.SalePrice <= 0 ? "input-invalid" : "")" />
+                    </div>
+
+                    <div class="field">
+                        <label>Precio de venta nocturna</label>
+                        <input type="number" min="0" step="0.01" @bind="_form.NightSalePrice" />
                     </div>
 
                     <div class="field">
@@ -780,6 +785,7 @@
             Name            = p.Name,
             Description     = p.Description,
             SalePrice       = p.SalePrice,
+            NightSalePrice  = p.NightSalePrice,
             CostPrice       = p.CostPrice,
             WholesalePrice  = p.WholesalePrice ?? 0,
             Stock           = p.Stock,
@@ -901,6 +907,7 @@
                     Name            = _form.Name.Trim(),
                     Description     = _form.Description.Trim(),
                     SalePrice       = _form.SalePrice,
+                    NightSalePrice  = _form.NightSalePrice,
                     CostPrice       = _form.CostPrice,
                     WholesalePrice  = _form.WholesalePrice == 0 ? null : _form.WholesalePrice,
                     Stock           = _form.Stock,
@@ -925,6 +932,7 @@
                 _selected.Name             = _form.Name.Trim();
                 _selected.Description      = _form.Description.Trim();
                 _selected.SalePrice        = _form.SalePrice;
+                _selected.NightSalePrice   = _form.NightSalePrice;
                 _selected.CostPrice        = _form.CostPrice;
                 _selected.WholesalePrice   = _form.WholesalePrice == 0 ? null : _form.WholesalePrice;
                 _selected.Stock            = _form.Stock;
@@ -1026,6 +1034,11 @@
         return msg.Contains("REFERENCE constraint", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("FOREIGN KEY",          StringComparison.OrdinalIgnoreCase)
             || msg.Contains("FK_",                  StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SyncNightSalePrice()
+    {
+        _form.NightSalePrice = _form.SalePrice;
     }
 
     private void ResetStockFields()
@@ -1147,6 +1160,7 @@
         public string  Name            { get; set; } = "";
         public string  Description     { get; set; } = "";
         public decimal SalePrice       { get; set; }
+        public decimal NightSalePrice  { get; set; }
         public decimal CostPrice       { get; set; }
         public decimal WholesalePrice  { get; set; }
         public decimal Stock           { get; set; } = 20;

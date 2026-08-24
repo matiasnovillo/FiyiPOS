@@ -58,6 +58,11 @@ namespace FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.EntitiesConfiguration
                 .HasColumnType("numeric(18,2)")
                 .IsRequired(true);
 
+            //NightSalePrice
+            entity.Property(e => e.NightSalePrice)
+                .HasColumnType("numeric(18,2)")
+                .IsRequired(true);
+
             //CostPrice
             entity.Property(e => e.CostPrice)
                 .HasColumnType("numeric(18,2)")

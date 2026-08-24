@@ -26,8 +26,12 @@ namespace FiyiPOS.Services.FiyiPOS
         public bool IsAuthenticated  => SystemUserId > 0;
         public bool CanSwitchStore   => AccessibleStores.Count > 1;
         public bool ForgotCheckout   { get; private set; }
+        public bool IsWholesaleMode  { get; private set; }
+        public bool IsNightSaleMode  { get; private set; }
 
         public void SetForgotCheckout(bool value) => ForgotCheckout = value;
+        public void SetWholesaleMode(bool value)  => IsWholesaleMode = value;
+        public void SetNightSaleMode(bool value)  => IsNightSaleMode = value;
 
         public int? BillingDaysLeft =>
             BillingDueDate.HasValue
@@ -113,6 +117,8 @@ namespace FiyiPOS.Services.FiyiPOS
             BillingDueDate    = null;
             OpeningCashAmount = 0;
             ForgotCheckout    = false;
+            IsWholesaleMode   = false;
+            IsNightSaleMode   = false;
         }
     }
 }

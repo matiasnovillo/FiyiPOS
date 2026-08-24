@@ -35,6 +35,8 @@ namespace FiyiPOS.Areas.FiyiPOS.Catalogo.ProductBack.Entities
 
         public decimal SalePrice { get; set; }
 
+        public decimal NightSalePrice { get; set; }
+
         public decimal CostPrice { get; set; }
 
         public decimal? WholesalePrice { get; set; }

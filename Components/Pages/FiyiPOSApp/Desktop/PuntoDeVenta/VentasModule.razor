@@ -90,8 +90,12 @@
     </div>
     <div class="action-row">
         <label class="check-label fs-6" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:0 .5rem;">
-            <input type="checkbox" @bind="_isWholesale" @bind:after="OnWholesaleToggle" />
+            <input type="checkbox" @bind="_isWholesale" @bind:after="OnWholesaleToggle" disabled="@_isNight" />
             <span class="fs-6">Venta al mayoreo</span>
+        </label>
+        <label class="check-label fs-6" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:0 .5rem;">
+            <input type="checkbox" @bind="_isNight" @bind:after="OnNightToggle" disabled="@_isWholesale" />
+            <span class="fs-6">Venta nocturna</span>
         </label>
         <button class="abtn abtn-danger" @onclick="ShowBuscarModal">
             <i class="fas fa-search fa-xl"></i>
@@ -289,7 +293,8 @@
                                             <tr>
                                                 <th>Descripción del Producto</th>
                                                 <th class="buscar-num">Precio Venta</th>
-                                                <th class="buscar-num">Categoría</th>
+                                                <th class="buscar-num">Precio mayorista</th>
+                                                <th class="buscar-num">Precio nocturno</th>
                                                 <th class="buscar-num">Inventario</th>
                                             </tr>
                                         </thead>
@@ -305,7 +310,8 @@
                                                         <div class="fs-6" style="color:var(--pos-text-muted);font-family:monospace;">@p.Barcode</div>
                                                     </td>
                                                     <td class="buscar-num fs-6" style="font-weight:700;color:var(--pos-primary);">$@p.SalePrice.ToString("N2")</td>
-                                                    <td class="buscar-num fs-6" style="color:var(--pos-text-muted);">—</td>
+                                                    <td class="buscar-num fs-6">@(p.WholesalePrice.HasValue && p.WholesalePrice > 0 ? $"${p.WholesalePrice.Value.ToString("N2")}" : "—")</td>
+                                                    <td class="buscar-num fs-6">@(p.NightSalePrice > 0 ? $"${p.NightSalePrice.ToString("N2")}" : "—")</td>
                                                     <td class="buscar-num fs-6 @(p.Stock <= 0 ? "buscar-stock-low" : "")">@p.Stock.ToString("N2")</td>
                                                 </tr>
                                             }
@@ -862,11 +868,28 @@ value;
 
     private void OnWholesaleToggle()
     {
+        posSessionService.SetWholesaleMode(_isWholesale);
         foreach (var ticket in _tickets)
         foreach (var item in ticket.Cart.Where(i => !i.IsCombo))
         {
             item.UnitPrice = _isWholesale && item.WholesalePrice > 0
                 ? item.WholesalePrice
+                : item.SalePrice;
+        }
+        StateHasChanged();
+    }
+
+    // ── Night sale mode ─────────────────────────────────
+    private bool _isNight = false;
+
+    private void OnNightToggle()
+    {
+        posSessionService.SetNightSaleMode(_isNight);
+        foreach (var ticket in _tickets)
+        foreach (var item in ticket.Cart.Where(i => !i.IsCombo))
+        {
+            item.UnitPrice = _isNight && item.NightSalePrice > 0
+                ? item.NightSalePrice
                 : item.SalePrice;
         }
         StateHasChanged();
@@ -952,6 +975,8 @@ value;
     protected override async Task OnInitializedAsync()
     {
         hotkeyService.KeyPressed += HandleHotkey;
+        _isWholesale = posSessionService.IsWholesaleMode;
+        _isNight     = posSessionService.IsNightSaleMode;
         var units = await unitRepository.GetAllByStoreIdAsync(posSessionService.StoreId);
         _unitAbbr = units.ToDictionary(u => u.UnitId, u => u.Abbreviation);
         _paymentMethods = await paymentMethodRepository.GetAllActiveAsync();
@@ -1081,7 +1106,10 @@ value;
                 Name             = product.Name,
                 SalePrice        = product.SalePrice,
                 WholesalePrice   = wholesale,
-                UnitPrice        = _isWholesale && wholesale > 0 ? wholesale : product.SalePrice,
+                NightSalePrice   = product.NightSalePrice,
+                UnitPrice        = _isWholesale && wholesale > 0 ? wholesale
+                                  : _isNight && product.NightSalePrice > 0 ? product.NightSalePrice
+                                  : product.SalePrice,
                 TaxRate          = product.TaxRate > 0 ? product.TaxRate : _defaultTaxRate,
                 CostPrice        = product.CostPrice,
                 AllowFractional  = product.AllowFractional,
@@ -1568,7 +1596,10 @@ value;
                 Name             = p.Name,
                 SalePrice        = p.SalePrice,
                 WholesalePrice   = wholesale,
-                UnitPrice        = _isWholesale && wholesale > 0 ? wholesale : p.SalePrice,
+                NightSalePrice   = p.NightSalePrice,
+                UnitPrice        = _isWholesale && wholesale > 0 ? wholesale
+                                  : _isNight && p.NightSalePrice > 0 ? p.NightSalePrice
+                                  : p.SalePrice,
                 TaxRate          = p.TaxRate > 0 ? p.TaxRate : _defaultTaxRate,
                 CostPrice        = p.CostPrice,
                 AllowFractional  = p.AllowFractional,
@@ -1944,6 +1975,7 @@ value;
         public string Name { get; set; } = "";
         public decimal SalePrice      { get; set; }
         public decimal WholesalePrice { get; set; }
+        public decimal NightSalePrice { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal Quantity { get; set; } = 1;
         public decimal TaxRate { get; set; }

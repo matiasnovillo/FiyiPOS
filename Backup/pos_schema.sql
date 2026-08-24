@@ -182,6 +182,7 @@ CREATE TABLE Product (
     Name                VARCHAR(150)    NOT NULL,
     Description         VARCHAR(MAX)    NULL,            -- Descripción larga para catálogo
     SalePrice           NUMERIC(18,2)   NOT NULL DEFAULT 0,  -- Precio al público
+    NightSalePrice      NUMERIC(18,2)   NOT NULL DEFAULT 0,  -- Precio de venta nocturna
     CostPrice           NUMERIC(18,2)   NOT NULL DEFAULT 0,  -- Costo de adquisición
     WholesalePrice      NUMERIC(18,2)   NULL,                -- Precio mayoreo (F11)
     Stock               NUMERIC(18,2)   NOT NULL DEFAULT 0,  -- Existencia actual
@@ -914,4 +915,37 @@ GO
 -- Paso 6: agregar Active (todas las unidades existentes quedan activas).
 IF COL_LENGTH('dbo.[FiyiPOS.Catalogo.Unit]', 'Active') IS NULL
     ALTER TABLE dbo.[FiyiPOS.Catalogo.Unit] ADD Active TINYINT NOT NULL DEFAULT 1;
+GO
+
+-- ====================================================================
+-- MIGRACIÓN (2026-08-24): Product.NightSalePrice
+--   Precio de venta nocturna, editable en el modal de producto.
+--   Al tipear "Precio de venta" en el modal se copia automáticamente
+--   a este campo (el usuario puede luego ajustarlo manualmente).
+--   Estrategia en 3 pasos (segura para tablas con datos):
+--     1) Agregar la columna como NULL
+--     2) Backfill: copiar el SalePrice actual de cada producto
+--     3) Volverla NOT NULL + default 0 para inserts futuros
+--   Idempotente: puede re-ejecutarse sin error.
+-- ====================================================================
+
+-- Paso 1: agregar columna como NULL
+IF COL_LENGTH('dbo.[FiyiPOS.Catalogo.Product]', 'NightSalePrice') IS NULL
+    ALTER TABLE dbo.[FiyiPOS.Catalogo.Product] ADD NightSalePrice NUMERIC(18,2) NULL;
+GO
+
+-- Paso 2: backfill con el precio de venta actual
+UPDATE dbo.[FiyiPOS.Catalogo.Product]
+SET NightSalePrice = SalePrice
+WHERE NightSalePrice IS NULL;
+GO
+
+-- Paso 3: volver la columna NOT NULL y con default 0
+ALTER TABLE dbo.[FiyiPOS.Catalogo.Product]
+ALTER COLUMN NightSalePrice NUMERIC(18,2) NOT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Product_NightSalePrice')
+    ALTER TABLE dbo.[FiyiPOS.Catalogo.Product]
+    ADD CONSTRAINT DF_Product_NightSalePrice DEFAULT 0 FOR NightSalePrice;
 GO
