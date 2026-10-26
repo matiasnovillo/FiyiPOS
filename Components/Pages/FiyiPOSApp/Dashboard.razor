@@ -44,22 +44,10 @@
                 <span class="dashp-card-desc">Punto de venta presencial</span>
             </button>
 
-            <button class="dashp-card" @onclick='() => Go("/online")'>
-                <i class="fas fa-globe dashp-card-icon"></i>
-                <span class="dashp-card-name">FiyiPOS Online</span>
-                <span class="dashp-card-desc">Catálogo y pedidos online</span>
-            </button>
-
-            <button class="dashp-card" @onclick='() => Go("/resto")'>
-                <i class="fas fa-utensils dashp-card-icon"></i>
-                <span class="dashp-card-name">FiyiPOS Restó</span>
-                <span class="dashp-card-desc">Mesas, comandas y cocina</span>
-            </button>
-
-            <button class="dashp-card" @onclick='() => Go("/canchas")'>
-                <i class="fas fa-futbol dashp-card-icon"></i>
-                <span class="dashp-card-name">FiyiPOS Canchas</span>
-                <span class="dashp-card-desc">Reservas y turnos por horario</span>
+            <button class="dashp-card" @onclick='() => Go("/turnos")'>
+                <i class="fas fa-calendar-check dashp-card-icon"></i>
+                <span class="dashp-card-name">FiyiPOS Turnos</span>
+                <span class="dashp-card-desc">Agenda de turnos</span>
             </button>
 
         </div>
@@ -115,16 +103,16 @@
         {
             await failureRepository.AddAsync(new Failure
             {
-                Active                   = true,
-                DateTimeCreation         = DateTime.Now,
+                Active = true,
+                DateTimeCreation = DateTime.Now,
                 DateTimeLastModification = DateTime.Now,
-                UserCreationId           = 1,
-                UserLastModificationId   = 1,
-                EmergencyLevel           = 1,
-                Comment                  = "",
-                Message                  = ex.Message,
-                Source                   = ex.Source    ?? "",
-                StackTrace               = ex.StackTrace ?? "",
+                UserCreationId = 1,
+                UserLastModificationId = 1,
+                EmergencyLevel = 1,
+                Comment = "",
+                Message = ex.Message,
+                Source = ex.Source ?? "",
+                StackTrace = ex.StackTrace ?? "",
             });
             NavigationManager.NavigateTo("/entrar");
         }

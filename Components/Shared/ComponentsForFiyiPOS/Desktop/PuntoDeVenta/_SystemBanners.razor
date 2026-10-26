@@ -5,9 +5,6 @@
 @inject ConfigRepository  configRepository
 @implements IDisposable
 
-@* ── Avisos de sistema (migrados desde _Header): se colocan arriba
-     del <main>, en la columna de contenido a la derecha del SideBar ── *@
-
 @if (!string.IsNullOrWhiteSpace(_specialMessage))
 {
     <div class="special-msg-banner">

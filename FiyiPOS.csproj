@@ -35,6 +35,8 @@
 
   <ItemGroup>
     <Folder Include="Areas\FiyiPOS\PuntoDeVenta\" />
+    <Folder Include="Components\Pages\FiyiPOSApp\Desktop\Turno\" />
+    <Folder Include="Components\Pages\FiyiPOSApp\Mobile\Turno\" />
     <Folder Include="wwwroot\downloads\" />
     <Folder Include="wwwroot\js\System\" />
     <Folder Include="wwwroot\uploads\" />

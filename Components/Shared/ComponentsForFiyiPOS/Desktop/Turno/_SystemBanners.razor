@@ -1,0 +1,69 @@
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Areas.FiyiPOS.Common.ConfigBack.Repositories
+
+@inject PosSessionService posSessionService
+@inject ConfigRepository  configRepository
+@implements IDisposable
+
+@if (!string.IsNullOrWhiteSpace(_specialMessage))
+{
+    <div class="special-msg-banner">
+        <i class="fas fa-bullhorn"></i>
+        <span>@_specialMessage</span>
+    </div>
+}
+
+@if (posSessionService.ForgotCheckout)
+{
+    <div class="billing-alert billing-alert-warning" style="cursor:pointer;" @onclick="() => posSessionService.SetForgotCheckout(false)">
+        <i class="fas fa-user-clock"></i>
+        <span>La última vez que usaste el sistema <strong>no cerraste sesión correctamente</strong>. Recuerda siempre hacer clic en <strong>Salir</strong> antes de irte para que quede registrada tu salida.</span>
+        <button style="background:none;border:none;color:inherit;font-size:1rem;cursor:pointer;margin-left:auto;opacity:.7;" class="fs-3" title="Cerrar">×</button>
+    </div>
+}
+
+@if (posSessionService.ShowBillingWarning)
+{
+    int days = posSessionService.BillingDaysLeft!.Value;
+    <div class="billing-alert @(days <= 0 ? "billing-alert-danger" : "billing-alert-warning")">
+        <i class="fas fa-exclamation-triangle"></i>
+        @if (days <= 0)
+        {
+            <span>Tu cuenta está <strong>vencida</strong>. Renovála para seguir usando el sistema.</span>
+        }
+        else
+        {
+            <span>Te quedan <strong>@days día@(days == 1 ? "" : "s")</strong> para renovar tu suscripción antes de que se desactive tu cuenta.</span>
+        }
+        <a href="/pagar" target="_blank" class="billing-alert-btn">
+            <i class="fas fa-money-bill-wave"></i> Pagar ahora
+        </a>
+    </div>
+}
+
+@code {
+    private string _specialMessage = "";
+
+    protected override void OnInitialized()
+    {
+        posSessionService.OnSessionChanged += HandleSessionChanged;
+        posSessionService.OnStoreChanged   += HandleSessionChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _specialMessage = await configRepository.GetValueAsync("special_message_from_root_to_all_users") ?? "";
+        }
+        catch { }
+    }
+
+    private async void HandleSessionChanged() => await InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        posSessionService.OnSessionChanged -= HandleSessionChanged;
+        posSessionService.OnStoreChanged   -= HandleSessionChanged;
+    }
+}

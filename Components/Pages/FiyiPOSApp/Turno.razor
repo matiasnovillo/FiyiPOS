@@ -1,0 +1,406 @@
+@page "/turnos"
+
+@using FiyiPOS.Components.Pages.FiyiPOSApp.Desktop.Common
+@using FiyiPOS.Components.Pages.FiyiPOSApp.Desktop.Catalogo
+@using FiyiPOS.Components.Pages.FiyiPOSApp.Desktop.PuntoDeVenta
+@using FiyiPOS.Components.Shared.ComponentsForFiyiPOS
+@using FiyiPOS.Components.Shared.ComponentsForFiyiPOS.Desktop.Turno
+@using FiyiPOS.Components.Shared.ComponentsForFiyiPOS.Mobile.Turno
+@using FiyiPOS.Services.System
+@using FiyiPOS.Services.FiyiPOS
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.StoreBack.Entities
+@using FiyiPOS.Areas.FiyiPOS.Common.SystemUserStoreBack.Repositories
+
+@inject PosSessionService posSessionService
+@inject HotkeyService hotkeyService
+@inject CookieService cookieService
+@inject SystemUserRepository systemUserRepository
+@inject SystemUserStoreRepository systemUserStoreRepository
+@inject SystemStatusService statusService
+@implements IDisposable
+
+<PageTitle>Turnos | FiyiPOS</PageTitle>
+
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<_SchemeStyles />
+
+@if (!_circuitReady)
+{
+    <div id="pos-circuit-loading">
+        <div class="pci-logo"><i class="fas fa-cash-register"></i></div>
+        <div class="pci-spinner"></div>
+        <p class="pci-text">Iniciando sistema...</p>
+    </div>
+}
+
+@if (!statusService.IsOnline)
+{
+    <div class="pos-root">
+        <div class="pos-system-down">
+            <div class="pos-system-down-icon"><i class="fas fa-plug-circle-xmark"></i></div>
+            <h2>Sistema caído</h2>
+            <p>@statusService.Message</p>
+            <p class="pos-system-down-sub">
+                <i class="fas fa-spinner fa-spin me-1"></i>
+                Reintentando conexión automáticamente...
+            </p>
+        </div>
+    </div>
+}
+else
+{
+    <!-- ── Pantallas pequeñas (< 768 px) ── -->
+    <div class="d-flex d-md-none flex-column" style="min-height:100vh;background:#f4f6f8;">
+
+        @if (_currentMobileSection == "home")
+        {
+            <!-- Encabezado -->
+            <_MobileHeader OperatorName="@posSessionService.OperatorName" StoreName="@posSessionService.StoreName" IsAuthenticated="@posSessionService.IsAuthenticated"></_MobileHeader>
+
+            <!-- Título + barra de sección (imitando imagen de referencia) -->
+            <div style="padding:4px 16px 0;" class="mt-2">
+                <div style="background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px;">
+                    <div style="font-weight:700;font-size:1.15rem;color:#fff;margin-bottom:4px;">Menú</div>
+                </div>
+            </div>
+
+            <!-- Tarjetas de módulos -->
+            <div style="padding:0 16px;flex:1;overflow-y:auto;">
+                @foreach (var m in _mobileModules)
+                {
+                    @if (posSessionService.IsAuthenticated && posSessionService.CanAccess(m.Section))
+                    {
+                        <div style="background:#fff;border-radius:12px;margin-bottom:10px;display:flex;align-items:center;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;"
+                             @onclick="() => SelectMobileSection(m.Section)">
+                            <div style="min-width:58px;height:58px;border-radius:10px;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-right:14px;color:#1aacb1;">
+                                <i class="fas @m.Icon" style="font-size:1.3rem;"></i>
+                            </div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:700;font-size:.92rem;color:#0f172a;">@m.Label</div>
+                                <div style="font-size:.75rem;color:#64748b;margin-top:2px;">@m.Desc</div>
+                            </div>
+                            <div style="min-width:36px;height:36px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;margin-left:10px;">
+                                <i class="fas fa-chevron-right" style="color:#94a3b8;font-size:.85rem;"></i>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Cerrar sesión -->
+            <div style="padding:16px;">
+                <button @onclick="MobileLogoutAsync"
+                        style="display:block;width:100%;text-align:center;background:#d1d5db;color:#374151;border-radius:10px;padding:13px;font-size:.88rem;border:none;font-weight:600;cursor:pointer;">
+                    Cerrar sesión
+                </button>
+            </div>
+
+            <!--Footer-->
+            <_MobileFooter></_MobileFooter>
+        }
+        else
+        {
+            <!-- Encabezado con botón volver -->
+            <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+                <button style="background:rgba(255,255,255,.12);border:none;color:#e2e8f0;border-radius:8px;padding:8px 14px;font-size:.82rem;cursor:pointer;white-space:nowrap;"
+                        @onclick='() => _currentMobileSection = "home"'>
+                    <i class="fas fa-arrow-left me-1"></i>Menú
+                </button>
+                <span style="font-weight:700;font-size:.95rem;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    @GetMobileModuleLabel(_currentMobileSection)
+                </span>
+            </div>
+
+            <!-- Contenido del módulo seleccionado -->
+            <div style="flex:1;overflow:auto;padding:12px;">
+                @switch (_currentMobileSection)
+                {
+                    case "ventas":
+                        <VentasModule @key="posSessionService.StoreId" />
+                        break;
+                    case "creditos":
+
+                        <CreditosModule />
+                        break;
+                    case "clientes":
+
+                        <ClientesModule />
+                        break;
+                    case "productos":
+
+                        <ProductosModule />
+                        break;
+                    case "inventario":
+
+                        <InventarioModule />
+                        break;
+                    case "proveedores":
+
+                        <ProveedoresModule />
+                        break;
+                    case "compras":
+
+                        <ComprasModule />
+                        break;
+                    case "movimientos":
+
+                        <MovimientosModule />
+                        break;
+                    case "corte":
+
+                        <CorteModule />
+                        break;
+                    case "asistencias":
+
+                        <AsistenciasModule />
+                        break;
+                }
+            </div>
+        }
+
+    </div>
+
+    <!-- ── Sistema POS — solo pantallas medianas o mayores (≥ 768 px) ── -->
+    <div class="d-none d-md-block">
+
+        <div class="pos-root">
+            <div style="display:flex; flex:1; overflow:hidden;">
+                <_SideBar ActiveSection="_currentDesktopSection"
+                          OnSectionChanged="ChangeSection"
+                          @bind-Collapsed="_sidebarCollapsed" />
+                <div style="display:flex; flex-direction:column; flex:1; overflow:hidden; min-width:0;">
+                    <_SystemBanners />
+                    <main class="pos-content">
+                        @if (posSessionService.IsAuthenticated && !posSessionService.CanAccess(_currentDesktopSection))
+                        {
+                            <div class="acceso-denegado">
+                                <i class="fas fa-lock"></i>
+                                <p>No tienes permiso para acceder a esta sección.</p>
+                                <span>Contacta al administrador si necesitas acceso.</span>
+                            </div>
+                        }
+                        else
+                        {
+                            @switch (_currentDesktopSection)
+                            {
+                                case "ventas":
+                                    <VentasModule @key="posSessionService.StoreId" />
+                                    break;
+                                case "creditos":
+                                    <CreditosModule />
+                                    break;
+                                case "clientes":
+                                    <ClientesModule />
+                                    break;
+                                case "productos":
+                                    <ProductosModule />
+                                    break;
+                                case "inventario":
+                                    <InventarioModule />
+                                    break;
+                                case "proveedores":
+                                    <ProveedoresModule />
+                                    break;
+                                case "compras":
+                                    <ComprasModule />
+                                    break;
+                                case "categorias":
+                                    <CategoriasModule />
+                                    break;
+                                case "unidades":
+                                    <UnidadesModule />
+                                    break;
+                                case "sucursales":
+                                    <SucursalesModule />
+                                    break;
+                                case "operadores":
+                                    <OperadoresModule />
+                                    break;
+                                case "configuracion":
+                                    <ConfiguracionModule />
+                                    break;
+                                case "esquema":
+                                    <SchemeManagerModule />
+                                    break;
+                                case "promociones":
+                                    <PromocionesModule />
+                                    break;
+                                case "devoluciones":
+                                    <DevolucionesModule />
+                                    break;
+                                case "consumointerno":
+                                    <ConsumoInternoModule />
+                                    break;
+                                case "facturas":
+                                    <FacturasModule />
+                                    break;
+                                case "movimientos":
+                                    <MovimientosModule />
+                                    break;
+                                case "corte":
+                                    <CorteModule />
+                                    break;
+                                case "reportes":
+                                    <ReportesModule />
+                                    break;
+                                case "notepad":
+                                    <BlocDeNotasModule />
+                                    break;
+                                case "aichat":
+                                    <AIChatModule />
+                                    break;
+                                case "asistencias":
+                                    <AsistenciasModule />
+                                    break;
+                            }
+                        }
+                    </main>
+                </div>
+            </div>
+
+            <_StatusBar />
+        </div>
+    </div>
+}
+
+@code {
+
+    private string _currentDesktopSection = "turnos";
+    private string _currentMobileSection = "home";
+    private bool _circuitReady = false;
+    private bool _sidebarCollapsed = false;
+
+    private record MobileModule(string Section, string Icon, string Label, string Desc);
+
+    private static readonly List<MobileModule> _mobileModules =
+    [
+        new("corte",       "fa-university", "Cortes de caja hechos", "Historial de cierres de jornada"),
+        new("asistencias", "fa-clock",      "Asistencia",            "Control de asistencia"),
+    ];
+
+    private void SelectMobileSection(string section) => _currentMobileSection = section;
+
+    private static string GetMobileModuleLabel(string section) =>
+        _mobileModules.FirstOrDefault(m => m.Section == section)?.Label ?? section;
+
+    private async Task MobileLogoutAsync()
+    {
+        await cookieService.RemovePosSystemUserIdCookieAsync();
+        posSessionService.ClearSession();
+        NavigationManager.NavigateTo("/");
+    }
+
+    protected override void OnInitialized()
+    {
+        hotkeyService.KeyPressed += HandleHotkey;
+        posSessionService.OnStoreChanged += OnStoreChanged;
+        statusService.StatusChanged += OnSystemStatusChanged;
+    }
+
+    private void OnSystemStatusChanged() => InvokeAsync(StateHasChanged);
+
+    private void HandleHotkey(string key)
+    {
+        string? section = key switch
+        {
+            "F1" => "turnos",
+            _ => null
+        };
+        if (section is null || !posSessionService.CanAccess(section)) return;
+        _currentDesktopSection = section;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        hotkeyService.KeyPressed -= HandleHotkey;
+        posSessionService.OnStoreChanged -= OnStoreChanged;
+        statusService.StatusChanged -= OnSystemStatusChanged;
+    }
+
+    private void OnStoreChanged()
+    {
+        _currentDesktopSection = "turnos";
+        _currentMobileSection = "home";
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            if (!posSessionService.IsAuthenticated)
+            {
+                long? systemUserId = await cookieService.GetDecryptedPosSystemUserIdAsync();
+
+                if (systemUserId.HasValue)
+                {
+                    SystemUser? systemUser = await systemUserRepository.GetOneBySystemUserIdAsync(systemUserId.Value);
+
+                    if (systemUser != null && systemUser.Active)
+                    {
+                        List<Store> stores = await systemUserStoreRepository.GetStoresByUserIdAsync(systemUser.SystemUserId);
+                        Store? store = stores.FirstOrDefault();
+
+                        posSessionService.SetSession(
+                            systemUser.SystemUserId,
+                            store?.StoreId ?? 0,
+                            store?.Name ?? "",
+                            systemUser.Name,
+                            systemUser.Role);
+                        posSessionService.SetAccessibleStores(stores);
+                        posSessionService.SetBillingDueDate(store?.BillingDueDate);
+
+                        if (!posSessionService.CanAccess(_currentDesktopSection))
+                            _currentDesktopSection = posSessionService.FirstAccessibleSection();
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    else
+                    {
+                        NavigationManager.NavigateTo("/entrar");
+                    }
+                }
+                else
+                {
+                    NavigationManager.NavigateTo("/entrar");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await failureRepository.AddAsync(new Failure
+            {
+                Active = true,
+                DateTimeCreation = DateTime.Now,
+                DateTimeLastModification = DateTime.Now,
+                UserCreationId = 1,
+                UserLastModificationId = 1,
+                EmergencyLevel = 1,
+                Comment = "",
+                Message = ex.Message,
+                Source = ex.Source ?? "",
+                StackTrace = ex.StackTrace ?? "",
+            });
+            NavigationManager.NavigateTo("/entrar");
+        }
+        finally
+        {
+            // Complete page initialization independently of the sidebar.
+            _circuitReady = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ChangeSection(string section)
+    {
+        if (!posSessionService.CanAccess(section)) return;
+        _currentDesktopSection = section;
+    }
+}

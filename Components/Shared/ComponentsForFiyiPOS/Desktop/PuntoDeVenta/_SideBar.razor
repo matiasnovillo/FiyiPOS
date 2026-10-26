@@ -282,7 +282,6 @@
 
     private void NavigateToDashboard() => NavigationManager.NavigateTo("/panel-de-control");
 
-    // ── Hotkeys + circuit ready (migrado desde _Header) ───────────
     private DotNetObjectReference<_SideBar>? _dotNetRef;
     private bool _registered;
 
@@ -295,7 +294,6 @@
         await JS.InvokeVoidAsync("hotkeyHelper.register", _dotNetRef);
         await OnCircuitReady.InvokeAsync();
 
-        // ── Init de tema + zoom (migrado desde _NavBarPuntoDeVenta) ──
         try
         {
             var configs     = await configRepository.GetSchemeVarsAsync(posSessionService.StoreId);
@@ -316,7 +314,6 @@
     [JSInvokable]
     public void OnKeyPressed(string key) => hotkeyService.Dispatch(key);
 
-    // ── Selector de sucursal (migrado desde _Header) ──────────────
     private async Task ToggleStoreMenuAsync()
     {
         if (Collapsed)
@@ -336,7 +333,6 @@
         _storeMenuOpen = false;
     }
 
-    // ── Tema + zoom (migrado desde _NavBarPuntoDeVenta) ───────────
     private bool _isDark;
     private int  _zoomIndex  = 5;
     private int  ZoomPercent => 75 + _zoomIndex * 5;
@@ -420,6 +416,7 @@
 
     private static string GetIcon(string s) => s switch
     {
+        "turnos" => "fa-calendar-check",
         "ventas"        => "fa-shopping-cart",
         "creditos"      => "fa-credit-card",
         "movimientos"   => "fa-exchange-alt",
@@ -448,6 +445,7 @@
 
     private static string GetLabel(string s) => s switch
     {
+        "turnos" => "Agenda",
         "ventas"        => "Ventas",
         "creditos"      => "Créditos",
         "movimientos"   => "Movimientos",

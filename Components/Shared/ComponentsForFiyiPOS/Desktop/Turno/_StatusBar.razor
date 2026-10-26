@@ -1,0 +1,49 @@
+@using FiyiPOS.Services.FiyiPOS
+@inject SystemStatusService statusService
+@implements IDisposable
+
+<!-- ── STATUS BAR ── -->
+<div class="pos-statusbar">
+    <span>
+        <i class="fas fa-circle fa-xl me-1"
+           style="color:@(statusService.IsOnline ? "#4ade80" : "#f87171");font-size:1rem;"></i>
+        <span class="fs-6">Sistema POS — @statusService.Message</span>
+    </span>
+    <span class="pos-statusbar-right">
+        <a class="pos-statusbar-support fs-6"
+           href="https://wa.me/543512329541?text=Hola%20equipo%2C%20necesito%20ayuda"
+           target="_blank" rel="noopener">
+            <i class="fab fa-whatsapp me-1"></i>Soporte
+        </a>
+        <span class="fs-6">@_clockDisplay</span>
+    </span>
+</div>
+
+@code {
+    private string _clockDisplay = "";
+    private Timer? _clockTimer;
+
+    protected override void OnInitialized()
+    {
+        statusService.StatusChanged += OnStatusChanged;
+        UpdateClock(null);
+        _clockTimer = new Timer(async _ =>
+        {
+            UpdateClock(null);
+            await InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    private void OnStatusChanged() => InvokeAsync(StateHasChanged);
+
+    private void UpdateClock(object? _)
+    {
+        _clockDisplay = DateTime.Now.ToString("dd MMM yyyy HH:mm:ss");
+    }
+
+    public void Dispose()
+    {
+        statusService.StatusChanged -= OnStatusChanged;
+        _clockTimer?.Dispose();
+    }
+}

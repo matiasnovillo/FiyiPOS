@@ -48,21 +48,21 @@ namespace FiyiPOS.Services.FiyiPOS
             {
                 "ventas", "creditos", "movimientos", "clientes",
                 "inventario", "facturas", "devoluciones", "consumointerno",
-                "corte", "dashboard", "comida"
+                "corte", "dashboard", "turnos", "comida"
             },
             ["supervisor"] = new()
             {
                 "ventas", "creditos", "movimientos", "clientes", "productos",
                 "inventario", "facturas", "proveedores",
                 "compras", "corte", "reportes", "operadores", "devoluciones", "consumointerno", "promociones", "notepad",
-                "dashboard", "comida"
+                "dashboard", "turnos", "comida"
             },
             ["admin"] = new()
             {
                 "ventas", "creditos", "movimientos", "clientes", "productos",
                 "inventario", "facturas", "proveedores",
                 "compras", "corte", "reportes", "configuracion", "operadores", "sucursales", "devoluciones", "consumointerno", "promociones", "esquema", "notepad",
-                "aichat", "dashboard", "comida", "asistencias", "categorias", "unidades"
+                "aichat", "dashboard", "turnos", "comida", "asistencias", "categorias", "unidades"
             },
         };
 

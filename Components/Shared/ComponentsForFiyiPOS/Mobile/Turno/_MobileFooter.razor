@@ -1,0 +1,64 @@
+<div class="turnos-mobile-footer-space" aria-hidden="true"></div>
+
+<nav class="turnos-mobile-footer" aria-label="Navegación móvil">
+    @for (var index = 0; index < Items.Length; index++)
+    {
+        var itemIndex = index;
+        var item = Items[itemIndex];
+        <button type="button"
+                class="turnos-mobile-footer-button @(SelectedIndex == itemIndex ? "is-active" : "")"
+                aria-label="@item.Label" title="@item.Label"
+                aria-current="@(SelectedIndex == itemIndex ? "page" : null)"
+                @onclick="() => SelectAsync(itemIndex)">
+            @if (itemIndex == 6)
+            {
+                <span class="turnos-mobile-footer-profile">
+                    @if (!string.IsNullOrWhiteSpace(ProfileImageUrl))
+                    {
+                        <img src="@ProfileImageUrl" alt="" />
+                    }
+                    else
+                    {
+                        <i class="far fa-user" aria-hidden="true"></i>
+                    }
+                </span>
+                @if (ShowProfileNotification)
+                {
+                    <span class="turnos-mobile-footer-dot" aria-hidden="true"></span>
+                    <span class="visually-hidden">Notificaciones pendientes</span>
+                }
+            }
+            else
+            {
+                <i class="@item.Icon" aria-hidden="true"></i>
+            }
+        </button>
+    }
+</nav>
+
+@code {
+    [Parameter] public int SelectedIndex { get; set; }
+    [Parameter] public EventCallback<int> SelectedIndexChanged { get; set; }
+    [Parameter] public EventCallback<int> OnItemSelected { get; set; }
+    [Parameter] public string? ProfileImageUrl { get; set; }
+    [Parameter] public bool ShowProfileNotification { get; set; }
+
+    // Plantilla: reemplazar los íconos y las etiquetas según cada vista.
+    private static readonly (string Label, string Icon)[] Items =
+    [
+        ("Inicio", "fas fa-house"),
+        ("Buscar", "fas fa-magnifying-glass"),
+        ("Videos", "far fa-circle-play"),
+        ("Crear", "fas fa-plus"),
+        ("Mensajes", "far fa-paper-plane"),
+        ("Estadísticas", "far fa-chart-bar"),
+        ("Perfil", "far fa-user")
+    ];
+
+    private async Task SelectAsync(int index)
+    {
+        SelectedIndex = index;
+        await SelectedIndexChanged.InvokeAsync(index);
+        await OnItemSelected.InvokeAsync(index);
+    }
+}

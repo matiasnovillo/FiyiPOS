@@ -5,6 +5,8 @@
 @using FiyiPOS.Components.Pages.FiyiPOSApp.Desktop.PuntoDeVenta
 @using FiyiPOS.Components.Pages.FiyiPOSApp.Mobile.PuntoDeVenta
 @using FiyiPOS.Components.Shared.ComponentsForFiyiPOS
+@using FiyiPOS.Components.Shared.ComponentsForFiyiPOS.Desktop.PuntoDeVenta
+@using FiyiPOS.Components.Shared.ComponentsForFiyiPOS.Mobile.PuntoDeVenta
 @using FiyiPOS.Services.System
 @using FiyiPOS.Services.FiyiPOS
 @using FiyiPOS.Areas.FiyiPOS.Common.SystemUserBack.Repositories
@@ -26,107 +28,7 @@
     <meta name="robots" content="noindex, nofollow" />
 </HeadContent>
 
-<!-- ── Pantallas pequeñas (< 768 px) ── -->
-<div class="d-flex d-md-none flex-column" style="min-height:100vh;background:#f4f6f8;">
-
-    @if (_mobileSection == "home")
-    {
-        <!-- Encabezado -->
-        <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-cash-register" style="color:#1aacb1;font-size:1.4rem;"></i>
-                <span style="font-weight:700;font-size:1rem;color:#e2e8f0;">
-                    FiyiPOS
-                </span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div style="display:flex;flex-direction:column;align-items:flex-end;">
-                    <span style="font-size:.75rem;color:#94a3b8;">@posSessionService.OperatorName</span>
-                    <span style="font-size:.7rem;color:#64748b;margin-top:1px;">
-                        <i class="fas fa-store me-1"></i>
-                        @posSessionService.StoreName
-                    </span>
-                </div>
-                <div style="width:34px;height:34px;border-radius:50%;background:#1aacb1;display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;color:#fff;">
-                    @(posSessionService.IsAuthenticated && posSessionService.OperatorName.Length > 0
-                        ? posSessionService.OperatorName[0].ToString().ToUpper() : "?")
-                </div>
-            </div>
-        </div>
-
-        <!-- Título + barra de sección (imitando imagen de referencia) -->
-        <div style="padding:4px 16px 0;" class="mt-2">
-            <div style="background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px;">
-                <div style="font-weight:700;font-size:1.15rem;color:#fff;margin-bottom:4px;">Menú</div>
-            </div>
-        </div>
-
-        <!-- Tarjetas de módulos -->
-        <div style="padding:0 16px;flex:1;overflow-y:auto;">
-            @foreach (var m in _mobileModules)
-            {
-                @if (posSessionService.IsAuthenticated && posSessionService.CanAccess(m.Section))
-                {
-                    <div style="background:#fff;border-radius:12px;margin-bottom:10px;display:flex;align-items:center;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;"
-                         @onclick="() => SelectMobileSection(m.Section)">
-                        <div style="min-width:58px;height:58px;border-radius:10px;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-right:14px;color:#1aacb1;">
-                            <i class="fas @m.Icon" style="font-size:1.3rem;"></i>
-                        </div>
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:.92rem;color:#0f172a;">@m.Label</div>
-                            <div style="font-size:.75rem;color:#64748b;margin-top:2px;">@m.Desc</div>
-                        </div>
-                        <div style="min-width:36px;height:36px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;margin-left:10px;">
-                            <i class="fas fa-chevron-right" style="color:#94a3b8;font-size:.85rem;"></i>
-                        </div>
-                    </div>
-                }
-            }
-        </div>
-
-        <!-- Cerrar sesión -->
-        <div style="padding:16px;">
-            <button @onclick="MobileLogoutAsync"
-                    style="display:block;width:100%;text-align:center;background:#d1d5db;color:#374151;border-radius:10px;padding:13px;font-size:.88rem;border:none;font-weight:600;cursor:pointer;">
-                Cerrar sesión
-            </button>
-        </div>
-    }
-    else
-    {
-        <!-- Encabezado con botón volver -->
-        <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
-            <button style="background:rgba(255,255,255,.12);border:none;color:#e2e8f0;border-radius:8px;padding:8px 14px;font-size:.82rem;cursor:pointer;white-space:nowrap;"
-                    @onclick='() => _mobileSection = "home"'>
-                <i class="fas fa-arrow-left me-1"></i>Menú
-            </button>
-            <span style="font-weight:700;font-size:.95rem;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                @GetMobileModuleLabel(_mobileSection)
-            </span>
-        </div>
-
-        <!-- Contenido del módulo seleccionado -->
-        <div style="flex:1;overflow:auto;padding:12px;">
-            @switch (_mobileSection)
-            {
-                case "ventas":        <VentasModule @key="posSessionService.StoreId" /> break;
-                case "creditos":      <CreditosModule /> break;
-                case "clientes":      <ClientesModule /> break;
-                case "productos":     <ProductosModule /> break;
-                case "inventario":    <InventarioModule /> break;
-                case "proveedores":   <ProveedoresModule /> break;
-                case "compras":       <ComprasModule /> break;
-                case "movimientos":   <MovimientosModule /> break;
-                case "corte":         <MobileCorteView /> break;
-                case "asistencias":   <MobileAsistenciasView /> break;
-            }
-        </div>
-    }
-
-</div>
-
-<!-- ── Sistema POS — solo pantallas medianas o mayores (≥ 768 px) ── -->
-<div class="d-none d-md-block">
+<_SchemeStyles />
 
 @if (!_circuitReady)
 {
@@ -137,12 +39,9 @@
     </div>
 }
 
-<_SchemeStyles />
-
-<div class="pos-root">
-
-    @if (!statusService.IsOnline)
-    {
+@if (!statusService.IsOnline)
+{
+    <div class="pos-root">
         <div class="pos-system-down">
             <div class="pos-system-down-icon"><i class="fas fa-plug-circle-xmark"></i></div>
             <h2>Sistema caído</h2>
@@ -152,19 +51,93 @@
                 Reintentando conexión automáticamente...
             </p>
         </div>
-    }
-    else
-    {
+    </div>
+}
+else
+{
+    <!-- ── Pantallas pequeñas (< 768 px) ── -->
+    <div class="d-flex d-md-none flex-column" style="min-height:100vh;background:#f4f6f8;">
 
+        @if (_currentMobileSection == "home")
+        {
+            <!-- Encabezado -->
+            <_MobileHeader OperatorName="@posSessionService.OperatorName" StoreName="@posSessionService.StoreName" IsAuthenticated="@posSessionService.IsAuthenticated"></_MobileHeader>
+
+            <!-- Título + barra de sección (imitando imagen de referencia) -->
+            <div style="padding:4px 16px 0;" class="mt-2">
+                <div style="background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px;">
+                    <div style="font-weight:700;font-size:1.15rem;color:#fff;margin-bottom:4px;">Menú</div>
+                </div>
+            </div>
+
+            <!-- Tarjetas de módulos -->
+            <div style="padding:0 16px;flex:1;overflow-y:auto;">
+                @foreach (var m in _mobileModules)
+                {
+                    @if (posSessionService.IsAuthenticated && posSessionService.CanAccess(m.Section))
+                    {
+                        <div style="background:#fff;border-radius:12px;margin-bottom:10px;display:flex;align-items:center;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;"
+                             @onclick="() => SelectMobileSection(m.Section)">
+                            <div style="min-width:58px;height:58px;border-radius:10px;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-right:14px;color:#1aacb1;">
+                                <i class="fas @m.Icon" style="font-size:1.3rem;"></i>
+                            </div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:700;font-size:.92rem;color:#0f172a;">@m.Label</div>
+                                <div style="font-size:.75rem;color:#64748b;margin-top:2px;">@m.Desc</div>
+                            </div>
+                            <div style="min-width:36px;height:36px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;margin-left:10px;">
+                                <i class="fas fa-chevron-right" style="color:#94a3b8;font-size:.85rem;"></i>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Cerrar sesión -->
+            <div style="padding:16px;">
+                <button @onclick="MobileLogoutAsync"
+                        style="display:block;width:100%;text-align:center;background:#d1d5db;color:#374151;border-radius:10px;padding:13px;font-size:.88rem;border:none;font-weight:600;cursor:pointer;">
+                    Cerrar sesión
+                </button>
+            </div>
+        }
+        else
+        {
+            <!-- Encabezado con botón volver -->
+            <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+                <button style="background:rgba(255,255,255,.12);border:none;color:#e2e8f0;border-radius:8px;padding:8px 14px;font-size:.82rem;cursor:pointer;white-space:nowrap;"
+                        @onclick='() => _currentMobileSection = "home"'>
+                    <i class="fas fa-arrow-left me-1"></i>Menú
+                </button>
+                <span style="font-weight:700;font-size:.95rem;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    @GetMobileModuleLabel(_currentMobileSection)
+                </span>
+            </div>
+
+            <!-- Contenido del módulo seleccionado -->
+            <div style="flex:1;overflow:auto;padding:12px;">
+                @switch (_currentMobileSection)
+                {
+                    case "corte":         <CorteMobileModule /> break;
+                    case "asistencias":   <AsistenciasMobileModule /> break;
+                }
+            </div>
+        }
+
+    </div>
+
+    <!-- ── Sistema POS — solo pantallas medianas o mayores (≥ 768 px) ── -->
+    <div class="d-none d-md-block">
+
+        <div class="pos-root">
             <div style="display:flex; flex:1; overflow:hidden;">
-                <_SideBar ActiveSection="_currentSection"
+                <_SideBar ActiveSection="_currentDesktopSection"
                          OnSectionChanged="ChangeSection"
-                         OnCircuitReady="OnCircuitReady"
                          @bind-Collapsed="_sidebarCollapsed" />
                 <div style="display:flex; flex-direction:column; flex:1; overflow:hidden; min-width:0;">
                 <_SystemBanners />
                 <main class="pos-content">
-                    @if (posSessionService.IsAuthenticated && !posSessionService.CanAccess(_currentSection))
+                    @if (posSessionService.IsAuthenticated && !posSessionService.CanAccess(_currentDesktopSection))
                     {
                         <div class="acceso-denegado">
                             <i class="fas fa-lock"></i>
@@ -174,7 +147,7 @@
                     }
                     else
                     {
-                        @switch (_currentSection)
+                        @switch (_currentDesktopSection)
                         {
                             case "ventas":
                                 <VentasModule @key="posSessionService.StoreId" />
@@ -242,9 +215,6 @@
                             case "aichat":
                                 <AIChatModule />
                                 break;
-                            case "comida":
-                                <ComidaModule />
-                                break;
                             case "asistencias":
                                 <AsistenciasModule />
                                 break;
@@ -253,18 +223,16 @@
                 </main>
                 </div>
             </div>
-    }
 
-    <_StatusBar></_StatusBar>
-
-</div>
-
-</div><!-- fin d-none d-md-block -->
+            <_StatusBar />
+        </div>
+    </div>
+}
 
 @code {
 
-    private string _currentSection = "ventas";
-    private string _mobileSection  = "home";
+    private string _currentDesktopSection = "ventas";
+    private string _currentMobileSection  = "home";
     private bool   _circuitReady  = false;
     private bool   _sidebarCollapsed = false;
 
@@ -276,7 +244,7 @@
         new("asistencias", "fa-clock",      "Asistencia",            "Control de asistencia"),
     ];
 
-    private void SelectMobileSection(string section) => _mobileSection = section;
+    private void SelectMobileSection(string section) => _currentMobileSection = section;
 
     private static string GetMobileModuleLabel(string section) =>
         _mobileModules.FirstOrDefault(m => m.Section == section)?.Label ?? section;
@@ -286,12 +254,6 @@
         await cookieService.RemovePosSystemUserIdCookieAsync();
         posSessionService.ClearSession();
         NavigationManager.NavigateTo("/");
-    }
-
-    private void OnCircuitReady()
-    {
-        _circuitReady = true;
-        // StateHasChanged is called automatically by Blazor after an EventCallback
     }
 
     protected override void OnInitialized()
@@ -314,7 +276,7 @@
             _    => null
         };
         if (section is null || !posSessionService.CanAccess(section)) return;
-        _currentSection = section;
+        _currentDesktopSection = section;
         InvokeAsync(StateHasChanged);
     }
 
@@ -327,8 +289,8 @@
 
     private void OnStoreChanged()
     {
-        _currentSection = "ventas";
-        _mobileSection  = "home";
+        _currentDesktopSection = "ventas";
+        _currentMobileSection  = "home";
         InvokeAsync(StateHasChanged);
     }
 
@@ -360,8 +322,8 @@
                         posSessionService.SetAccessibleStores(stores);
                         posSessionService.SetBillingDueDate(store?.BillingDueDate);
 
-                        if (!posSessionService.CanAccess(_currentSection))
-                            _currentSection = posSessionService.FirstAccessibleSection();
+                        if (!posSessionService.CanAccess(_currentDesktopSection))
+                            _currentDesktopSection = posSessionService.FirstAccessibleSection();
                         await InvokeAsync(StateHasChanged);
                     }
                     else
@@ -392,11 +354,17 @@
             });
             NavigationManager.NavigateTo("/entrar");
         }
+        finally
+        {
+            // Complete page initialization independently of the sidebar.
+            _circuitReady = true;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private void ChangeSection(string section)
     {
         if (!posSessionService.CanAccess(section)) return;
-        _currentSection = section;
+        _currentDesktopSection = section;
     }
 }

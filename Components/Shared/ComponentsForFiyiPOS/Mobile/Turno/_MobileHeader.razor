@@ -1,0 +1,27 @@
+﻿<div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-cash-register" style="color:#1aacb1;font-size:1.4rem;"></i>
+        <span style="font-weight:700;font-size:1rem;color:#e2e8f0;">
+            FiyiPOS
+        </span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span style="font-size:.75rem;color:#94a3b8;">@OperatorName</span>
+            <span style="font-size:.7rem;color:#64748b;margin-top:1px;">
+                <i class="fas fa-store me-1"></i>
+                @StoreName
+            </span>
+        </div>
+        <div style="width:34px;height:34px;border-radius:50%;background:#1aacb1;display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;color:#fff;">
+            @(IsAuthenticated && OperatorName.Length > 0
+                ? OperatorName[0].ToString().ToUpper() : "?")
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string OperatorName { get; set; } = "operador";
+    [Parameter] public string StoreName { get; set; } = "sucursal";
+    [Parameter] public bool IsAuthenticated { get; set; } = false;
+}
