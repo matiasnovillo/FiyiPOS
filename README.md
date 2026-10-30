@@ -26,12 +26,6 @@ La aplicación también ofrece herramientas para administrar el negocio: crédit
 | 🤖 Asistente de IA | Chat con contexto de la tienda mediante la API de Anthropic, sujeto a la configuración de su clave de acceso. |
 | 🎨 Experiencia de uso | Vistas para escritorio y móvil, atajos de teclado y personalización visual. |
 
-### 🚧 Alcance actual
-
-El panel de control permite acceder a **FiyiPOS Físico** (`/punto-de-venta`) y **FiyiPOS Turnos** (`/turnos`). La ruta de turnos tiene una estructura de navegación que reutiliza módulos del POS; la presencia de esta pantalla no implica que exista una agenda completa de reservas implementada.
-
-La organización de los datos permite compartir capacidades entre variantes del producto. Las menciones a otras variantes en comentarios del código expresan una dirección de expansión y no garantizan funcionalidades terminadas.
-
 ## 🛠️ Tecnologías
 
 Las versiones indicadas corresponden a las referencias del proyecto en [FiyiPOS.csproj](FiyiPOS.csproj).
@@ -46,9 +40,7 @@ Las versiones indicadas corresponden a las referencias del proyecto en [FiyiPOS.
 | 🎨 Bootstrap 5, Font Awesome y JavaScript | Diseño adaptable, iconos e interoperabilidad para funciones del navegador. |
 | 📗 ClosedXML y CsvHelper | Utilidades de importación/exportación de datos en Excel y CSV, según el módulo. |
 | 📄 IronPDF y QRCoder | Generación de PDF en servicios de exportación y códigos QR para facturación. |
-| ✉️ MailKit | Envío de correos mediante SMTP. |
-
-El proyecto también referencia el SDK de Mercado Pago. Esta dependencia, por sí sola, no acredita un circuito automático de cobro integrado: la página de pago existente presenta instrucciones para abonar la suscripción.
+| ✉️ MailKit | Envío de correos mediante SMTP.
 
 ## 🏗️ Arquitectura técnica
 
